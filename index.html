@@ -129,7 +129,7 @@ function load() {
     if (S.cat && S.categories.indexOf(S.cat) < 0) S.cat = "";
     S.cart = S.cart.filter(c => S.products.some(p => p.id === c.pid)); saveCart();
     renderCats(); renderShop();
-    // 從「一鍵複製」的連結進來時，直接打開那件商品
+    // 網址帶 ?p=商品ID 時，直接打開那件商品
     const pid = new URLSearchParams(location.search).get("p");
     if (pid && !S.opened) { S.opened = true; if (S.products.some(p => p.id === pid)) openProduct(pid); }
   }).catch(e => { $("#plist").innerHTML = `<div class="empty">載入失敗：${esc(errMsg(e))}</div>`; });
@@ -174,22 +174,6 @@ function renderShop() {
   document.querySelectorAll(".card").forEach(c => c.addEventListener("click", () => openProduct(c.dataset.pid)));
 }
 
-// 商品連結：有 LINE 登入就用 LIFF 網址，客人點了會在 LINE 裡打開
-function productLink(p) {
-  return CFG.LIFF_ID ? `https://liff.line.me/${CFG.LIFF_ID}?p=${encodeURIComponent(p.id)}`
-    : location.origin + location.pathname + "?p=" + encodeURIComponent(p.id);
-}
-function shareText(p) {
-  const lines = [`【${p.title}】`, `💰 $${priceText(p)}`];
-  const diff = p.variants.some(v => v.price !== p.variants[0].price);
-  if (p.variants.length > 1) lines.push("規格：" + p.variants.map(v => diff ? `${v.name} $${money(v.price)}` : v.name).join("、"));
-  if (p.preorder) lines.push("✅ 可預購");
-  if (p.closeAt) lines.push(`⏰ ${p.closeAt.slice(5).replace("-", "/")} 結單`);
-  const d = p.desc.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 4).join("\n");
-  if (d) lines.push("", d);
-  lines.push("", "👉 下單：" + productLink(p));
-  return lines.join("\n");
-}
 function gallery(p) {
   if (p.images.length < 2) return `<div class="ph">${photo(p)}</div>`;
   return `<div class="gallery"><div class="slides" id="slides">${p.images.map((u, i) => `<div class="ph"><img src="${esc(u)}" alt="${esc(p.title)} 第 ${i + 1} 張" loading="lazy" referrerpolicy="no-referrer"></div>`).join("")}</div>
@@ -215,14 +199,13 @@ function openProduct(pid) {
       <div><div>${esc(v.name)}　<b class="vprice">$${money(v.price)}</b></div><div class="left">${vNote(v)}</div></div>
       <div class="stepper"><button type="button" data-i="${i}" data-d="-1" aria-label="減少">−</button><span id="q${i}">0</span><button type="button" data-i="${i}" data-d="1" aria-label="增加" ${r <= 0 || p.closed ? "disabled" : ""}>+</button></div></div>`; }).join("")}</div>
     <div class="total"><span>小計</span><span class="price" id="tot">0</span></div>
-    <div class="actions"><button type="button" class="btn ghost" id="copy">一鍵複製</button><button class="btn ghost" id="cl">關閉</button><button class="btn" id="add" ${p.closed ? "disabled" : ""}>${p.closed ? "已結單" : "加入購物車"}</button></div>
+    <div class="actions"><button class="btn ghost" id="cl">關閉</button><button class="btn" id="add" ${p.closed ? "disabled" : ""}>${p.closed ? "已結單" : "加入購物車"}</button></div>
     ${p.desc ? `<div class="label">商品說明</div><div class="desc">${esc(p.desc)}</div>` : ""}`);
   const sl = $("#slides");
   if (sl) sl.addEventListener("scroll", () => {
     const i = Math.round(sl.scrollLeft / sl.clientWidth);
     document.querySelectorAll("#dots span").forEach((d, j) => d.className = i === j ? "on" : "");
   });
-  $("#copy").onclick = () => copyText(shareText(p), "已複製，可以直接貼到 LINE 群");
   const upd = () => { let t = 0; p.variants.forEach((v, i) => { $("#q" + i).textContent = qty[i] || 0; t += (qty[i] || 0) * v.price; }); $("#tot").textContent = money(t); };
   document.querySelectorAll(".stepper button").forEach(b => b.addEventListener("click", () => {
     const i = +b.dataset.i, v = p.variants[i], max = v.left - inCart(p.id, v.name);
