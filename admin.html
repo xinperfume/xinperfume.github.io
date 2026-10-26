@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>賣家後台｜揪團下單小舖</title>
+<title>賣家後台｜XIN歆星香水/流行代購</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chiron+GoRound+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chiron+GoRound+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
 <script src="common.js"></script>
@@ -14,7 +14,7 @@
 <body>
 <header>
   <div class="wrap">
-    <div class="bar"><h1 id="shopname">揪團下單小舖<small>賣家後台</small></h1><a id="sheetlink" class="hint" target="_blank" rel="noopener" hidden>試算表 ↗</a></div>
+    <div class="bar"><h1 id="shopname">XIN歆星香水/流行代購<small>賣家後台</small></h1><a id="sheetlink" class="hint" target="_blank" rel="noopener" hidden>試算表 ↗</a></div>
     <nav class="tabs" role="tablist" id="tabs" hidden>
       <button class="tab" role="tab" aria-selected="true" data-view="orders">訂單</button>
       <button class="tab" role="tab" aria-selected="false" data-view="products">商品</button>
@@ -61,7 +61,8 @@ function refresh() {
   return call("adminData").then(d => {
     A.data = d; d.products = d.products.map(normProduct); d.categories = d.categories || [];
     const l = $("#sheetlink"); l.href = d.sheetUrl; l.hidden = false;
-    $("#shopname").firstChild.textContent = d.settings["店名"] || "揪團下單小舖";
+    $("#shopname").firstChild.textContent = d.settings["店名"] || "XIN歆星香水/流行代購";
+    document.title = "賣家後台｜" + (d.settings["店名"] || "XIN歆星香水/流行代購");
     render();
   }).catch(err => toast(errMsg(err)));
 }
@@ -197,7 +198,7 @@ function renderSettings() {
       <div class="row2">${f("銀行", "銀行名稱與代碼", "例：中國信託 822")}${f("帳號", "帳號", "例：1234-5678-9012")}</div>
       <div class="row2">${f("戶名", "戶名（可不填）", "")}${f("付款說明", "付款說明（可不填）", "例：結單後 3 天內匯款")}</div>
       <h3 style="margin-top:12px">商店</h3>
-      ${f("店名", "店名", "揪團下單小舖")}
+      ${f("店名", "店名", "XIN歆星香水/流行代購")}
       ${f("公告", "商品頁最上方的公告（可不填）", "例：本週五結單，下週三面交", true)}
       ${f("取貨方式", "取貨方式（用逗號隔開）", "面交, 7-11 賣貨便, 全家好賣+, 宅配")}
       <h3 style="margin-top:12px">LINE 登入</h3>
