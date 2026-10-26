@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>賣家後台｜揪團下單小舖</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chiron+GoRound+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<script src="common.js"></script>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="bar"><h1 id="shopname">揪團下單小舖<small>賣家後台</small></h1><a id="sheetlink" class="hint" target="_blank" rel="noopener" hidden>試算表 ↗</a></div>
+    <nav class="tabs" role="tablist" id="tabs" hidden>
+      <button class="tab" role="tab" aria-selected="true" data-view="orders">訂單</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="products">商品</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="settings">收款與設定</button>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  <section id="view-login" class="panel" style="max-width:420px;margin:40px auto">
+    <h3>賣家登入</h3>
+    <form id="loginf">
+      <div class="field"><label for="pw">管理密碼</label><input id="pw" type="password" required autocomplete="current-password"></div>
+      <div class="err" id="loginerr"></div>
+      <button class="btn block" id="loginbtn">登入</button>
+    </form>
+    <p class="hint">密碼設定在 Google 試算表「設定」工作表的「管理密碼」那一列。</p>
+  </section>
+  <section id="view-orders" hidden></section>
+  <section id="view-products" hidden></section>
+  <section id="view-settings" hidden></section>
+</main>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+const A = { token: null, data: null, view: "orders", filter: "全部", editing: null };
+try { A.token = sessionStorage.getItem("adm") || null; } catch (_) {}
+
+$("#loginf").addEventListener("submit", e => {
+  e.preventDefault(); $("#loginbtn").disabled = true; $("#loginerr").textContent = "";
+  api("adminLogin", { password: $("#pw").value }).then(t => {
+    A.token = t; try { sessionStorage.setItem("adm", t); } catch (_) {}
+    return refresh();
+  }).catch(err => { $("#loginerr").textContent = errMsg(err); }).then(() => { $("#loginbtn").disabled = false; });
+});
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { A.view = t.dataset.view; render(); }));
+
+function call(action, data) {
+  return api(action, Object.assign({ token: A.token }, data || {})).catch(err => {
+    if (/登入已過期/.test(errMsg(err))) { A.token = null; A.data = null; try { sessionStorage.removeItem("adm"); } catch (_) {} render(); }
+    throw err;
+  });
+}
+function refresh() {
+  return call("adminData").then(d => {
+    A.data = d;
+    const l = $("#sheetlink"); l.href = d.sheetUrl; l.hidden = false;
+    $("#shopname").firstChild.textContent = d.settings["店名"] || "揪團下單小舖";
+    render();
+  }).catch(err => toast(errMsg(err)));
+}
+
+function render() {
+  const logged = !!(A.token && A.data);
+  $("#view-login").hidden = logged; $("#tabs").hidden = !logged;
+  ["orders", "products", "settings"].forEach(v => $("#view-" + v).hidden = !logged || A.view !== v);
+  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.view === A.view));
+  if (!logged) return;
+  ({ orders: renderOrders, products: renderProducts, settings: renderSettings })[A.view]();
+}
+
+function renderOrders() {
+  const d = A.data, live = d.orders.filter(o => o.status !== "已取消");
+  const sum = st => live.filter(o => o.status === st).reduce((a, o) => a + o.total, 0);
+  const pick = {};
+  live.forEach(o => o.items.forEach(i => { pick[i.title] = pick[i.title] || {}; pick[i.title][i.variant] = (pick[i.title][i.variant] || 0) + i.qty; }));
+  const pickText = Object.keys(pick).map(t => `【${t}】\n` + Object.keys(pick[t]).map(v => `  ${v} × ${pick[t][v]}`).join("\n")).join("\n");
+  const rows = d.orders.filter(o => A.filter === "全部" || o.status === A.filter);
+  $("#view-orders").innerHTML = `<div class="summary">
+      <div class="stat"><b>${live.length}</b><span>筆訂單</span></div>
+      <div class="stat"><b>NT$${money(live.reduce((a, o) => a + o.total, 0))}</b><span>訂單總額</span></div>
+      <div class="stat"><b>NT$${money(sum("待對帳"))}</b><span>已回報、待對帳</span></div>
+      <div class="stat"><b>NT$${money(sum("待付款"))}</b><span>尚未付款</span></div></div>
+    <div class="panel"><h3>叫貨總表</h3>${pickText ? `<pre class="copybox">${esc(pickText)}</pre><div class="actions"><button class="btn small ghost" id="cppick">複製叫貨總表</button></div>` : `<p class="hint">有訂單後會自動加總每個規格要叫幾件（不含已取消）。</p>`}</div>
+    <div class="panel"><div class="actions" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">訂單</h3>
+      <div class="actions"><select id="flt" aria-label="篩選狀態" style="width:auto">${["全部"].concat(d.statuses).map(f => `<option ${f === A.filter ? "selected" : ""}>${f}</option>`).join("")}</select><button class="btn small ghost" id="reload">重新整理</button></div></div>
+      ${rows.length ? `<div class="tablewrap"><table><thead><tr><th>編號</th><th>時間</th><th>收件人</th><th>LINE</th><th>手機</th><th>商品</th><th>金額</th><th>取貨</th><th>末五碼</th><th>狀態</th></tr></thead><tbody>
+      ${rows.map(o => `<tr><td>${esc(o.orderNo)}</td><td>${esc(o.time)}</td><td>${esc(o.name)}</td><td>${esc(o.line)}${o.lineId ? ` <span class="chip">LINE 登入</span>` : ""}</td><td>${esc(o.phone)}</td>
+        <td class="wrap">${o.items.map(i => `${esc(i.title)}・${esc(i.variant)} × ${i.qty}`).join("<br>")}${o.note ? `<div class="hint">備註：${esc(o.note)}</div>` : ""}</td>
+        <td>NT$${money(o.total)}</td><td>${esc(o.pickup)}</td><td>${o.last5 ? `<b>${esc(o.last5)}</b>` : "—"}</td>
+        <td><select data-no="${esc(o.orderNo)}" aria-label="訂單狀態" style="width:auto">${d.statuses.map(s => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select></td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="hint">${d.orders.length ? "這個狀態沒有訂單。" : "還沒有人下單。把買家網址貼到你的 LINE 社群或 FB 社團吧。"}</p>`}</div>`;
+  const cp = $("#cppick"); if (cp) cp.onclick = () => copyText(pickText, "已複製，可以直接貼給廠商");
+  $("#flt").onchange = e => { A.filter = e.target.value; renderOrders(); };
+  $("#reload").onclick = () => refresh().then(() => toast("已更新"));
+  document.querySelectorAll("select[data-no]").forEach(s => s.addEventListener("change", () => {
+    s.disabled = true;
+    call("setOrderStatus", { orderNo: s.dataset.no, status: s.value }).then(() => {
+      A.data.orders.filter(x => x.orderNo === s.dataset.no).forEach(o => o.status = s.value);
+      toast("已改成「" + s.value + "」"); renderOrders();
+    }).catch(err => { toast(errMsg(err)); s.disabled = false; });
+  }));
+}
+
+function renderProducts() {
+  const p = A.editing || {};
+  $("#view-products").innerHTML = `<div class="panel"><h3>${p.id ? "編輯商品" : "上架新商品"}</h3>
+    <form id="pf">
+      <div class="field"><label for="p-title">商品名稱</label><input id="p-title" required value="${esc(p.title || "")}" placeholder="例：小熊拼接衣"></div>
+      <div class="row2">
+        <div class="field"><label for="p-price">價格（NT$）</label><input id="p-price" type="number" min="0" required value="${esc(p.price == null ? "" : p.price)}"></div>
+        <div class="field"><label for="p-close">結單日（可不填）</label><input id="p-close" type="date" value="${esc(p.closeAt || "")}"></div>
+      </div>
+      <div class="field"><label for="p-var">規格與庫存</label><input id="p-var" required value="${esc(p.variantsText || "")}" placeholder="90:3, 100:2, 110:5">
+        <span class="hint">寫「規格:數量」，多個用逗號隔開；只有一種就寫「單一:10」。數量是總共能賣幾件，已賣出的會自動扣。</span></div>
+      <div class="field"><label for="p-desc">商品說明</label><textarea id="p-desc" placeholder="材質、尺寸、預計到貨時間…">${esc(p.desc || "")}</textarea></div>
+      <div class="field"><label for="p-img">商品照片</label><input id="p-img" type="file" accept="image/*">
+        <span class="hint" id="imghint">${p.image ? "已有照片，重新選擇會取代。" : "照片會存到你的 Google 雲端硬碟。"}</span></div>
+      <div class="err" id="perr"></div>
+      <div class="actions">${p.id ? `<button type="button" class="btn ghost" id="pcancel">取消編輯</button>` : ""}<button class="btn" id="psave">${p.id ? "儲存修改" : "上架"}</button></div>
+    </form></div>
+    <div class="panel"><h3>全部商品</h3>${A.data.products.length ? `<div class="plist">${A.data.products.map(x => `<div class="pitem">
+      <div class="ph">${photo(x)}</div><div class="grow"><b>${esc(x.title)}</b>
+      <div class="hint">NT$${money(x.price)}・${x.variants.map(v => `${esc(v.name)} 賣出${v.sold}／剩${v.left}`).join("、")}</div></div>
+      <span class="chip ${x.active ? "" : "off"}">${x.active ? (x.closed ? "已結單" : "上架中") : "已下架"}</span>
+      <button class="btn small ghost" data-edit="${esc(x.id)}">編輯</button>
+      <button class="btn small ghost" data-toggle="${esc(x.id)}">${x.active ? "下架" : "重新上架"}</button></div>`).join("")}</div>` : `<p class="hint">還沒有商品，用上面的表單新增第一件。</p>`}</div>`;
+  const c = $("#pcancel"); if (c) c.onclick = () => { A.editing = null; renderProducts(); };
+  document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => { A.editing = A.data.products.find(x => x.id === b.dataset.edit); renderProducts(); scrollTo({ top: 0, behavior: "smooth" }); });
+  document.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => {
+    const x = A.data.products.find(y => y.id === b.dataset.toggle); b.disabled = true;
+    call("setProductActive", { id: x.id, active: !x.active }).then(refresh).then(() => toast(x.active ? "已下架" : "已重新上架"))
+      .catch(err => { toast(errMsg(err)); b.disabled = false; });
+  });
+  $("#pf").addEventListener("submit", e => {
+    e.preventDefault(); $("#psave").disabled = true; $("#perr").textContent = "";
+    const f = $("#p-img").files[0];
+    const img = f ? resize(f).then(url => { $("#imghint").textContent = "照片上傳中…"; return call("uploadImage", { dataUrl: url, filename: f.name }); }) : Promise.resolve(p.image || "");
+    img.then(image => call("saveProduct", { product: { id: p.id, title: $("#p-title").value.trim(), price: $("#p-price").value, closeAt: $("#p-close").value,
+        variants: $("#p-var").value.trim(), desc: $("#p-desc").value, image, active: p.id ? p.active : true } }))
+      .then(() => { toast(p.id ? "已儲存" : "已上架！"); A.editing = null; return refresh(); })
+      .catch(err => { $("#perr").textContent = errMsg(err); $("#psave").disabled = false; });
+  });
+}
+
+// shrink photos before upload so they load fast on phones
+function resize(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader(); r.onerror = () => rej(new Error("讀不到這張照片"));
+    r.onload = () => {
+      const im = new Image(); im.onerror = () => rej(new Error("這個檔案不是圖片"));
+      im.onload = () => {
+        const s = Math.min(1, 1200 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+        c.width = Math.round(im.width * s); c.height = Math.round(im.height * s);
+        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+        res(c.toDataURL("image/jpeg", 0.85));
+      };
+      im.src = r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+function renderSettings() {
+  const s = A.data.settings;
+  const f = (k, label, ph, ta) => `<div class="field"><label for="s-${k}">${label}</label>${ta ? `<textarea id="s-${k}" placeholder="${esc(ph)}">${esc(s[k])}</textarea>` : `<input id="s-${k}" value="${esc(s[k])}" placeholder="${esc(ph)}">`}</div>`;
+  $("#view-settings").innerHTML = `<div class="panel"><h3>收款帳號</h3>
+    <form id="sf">
+      <div class="row2">${f("銀行", "銀行名稱與代碼", "例：中國信託 822")}${f("帳號", "帳號", "例：1234-5678-9012")}</div>
+      <div class="row2">${f("戶名", "戶名（可不填）", "")}${f("付款說明", "付款說明（可不填）", "例：結單後 3 天內匯款")}</div>
+      <h3 style="margin-top:12px">商店</h3>
+      ${f("店名", "店名", "揪團下單小舖")}
+      ${f("公告", "商品頁最上方的公告（可不填）", "例：本週五結單，下週三面交", true)}
+      ${f("取貨方式", "取貨方式（用逗號隔開）", "面交, 7-11 賣貨便, 全家好賣+, 宅配")}
+      <h3 style="margin-top:12px">LINE 登入</h3>
+      ${f("LINE頻道ID", "LINE Login 頻道的 Channel ID（10 位數字）", "例：2001234567")}
+      <p class="hint">填了以後，買家一定要用 LINE 登入才能下單。網頁的 config.js 也要填 LIFF ID，兩個要一起設定。</p>
+      <div class="actions"><button class="btn" id="ssave">儲存</button></div>
+    </form>
+    <p class="hint">管理密碼請直接在 Google 試算表的「設定」工作表修改。</p></div>`;
+  $("#sf").addEventListener("submit", e => {
+    e.preventDefault(); $("#ssave").disabled = true;
+    const data = {}; ["銀行", "帳號", "戶名", "付款說明", "店名", "公告", "取貨方式", "LINE頻道ID"].forEach(k => data[k] = $("#s-" + k).value.trim());
+    call("saveSettings", { settings: data }).then(() => { Object.assign(A.data.settings, data); toast("已儲存"); })
+      .catch(err => toast(errMsg(err))).then(() => { $("#ssave").disabled = false; });
+  });
+}
+
+render(); if (A.token) refresh();
+</script>
+</body>
+</html>

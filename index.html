@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ff6b57">
+<title>揪團下單小舖</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<script src="common.js"></script>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="bar">
+      <h1 id="shopname">揪團下單小舖</h1>
+      <div class="who" id="who" hidden></div>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <section id="view-shop">
+    <div id="notice" class="notice" hidden></div>
+    <div id="shopinfo" class="card-box shopinfo" hidden></div>
+    <div id="plist"><div class="loading">商品載入中…</div></div>
+  </section>
+  <section id="view-mine" hidden>
+    <div class="panel" id="lookup" hidden>
+      <h3>查詢訂購紀錄</h3>
+      <form id="lf" class="report">
+        <div class="field"><label for="l-phone">下單時填的手機號碼</label><input id="l-phone" inputmode="numeric" placeholder="0912345678" autocomplete="tel"></div>
+        <button class="btn" id="lsub">查詢</button>
+      </form>
+      <div class="err" id="lerr"></div>
+    </div>
+    <div id="mresult"></div>
+  </section>
+  <section id="view-member" hidden></section>
+</main>
+
+<nav class="bottomnav" aria-label="主選單">
+  <div class="wrap" role="tablist">
+    <button class="navbtn" role="tab" data-view="shop" aria-selected="true">
+      <svg viewBox="0 0 24 24"><path d="M4 9.5 5.5 4h13L20 9.5"/><path d="M4 9.5h16v1a3 3 0 0 1-5.3 1.9A3 3 0 0 1 12 13.5a3 3 0 0 1-2.7-1.1A3 3 0 0 1 4 10.5z"/><path d="M5.5 13v7h13v-7"/></svg>逛賣場</button>
+    <button class="navbtn" data-view="cart">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3.5h3l2.4 11.5h11l2-8H7"/></svg>購物車<span class="badge" id="badge" hidden>0</span></button>
+    <button class="navbtn" role="tab" data-view="mine" aria-selected="false">
+      <svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg>訂購紀錄</button>
+    <button class="navbtn" role="tab" data-view="member" aria-selected="false">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.2-4.2 4.3-6 8-6s6.8 1.8 8 6"/></svg>會員</button>
+  </div>
+</nav>
+<div id="sheet-root"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+const S = { products: [], settings: {}, cart: [], me: null, idToken: null, phone: "", view: "shop" };
+try { S.cart = JSON.parse(localStorage.getItem("cart") || "[]"); } catch (_) {}
+const isLine = () => !!(S.me && S.me.line);
+const ident = () => isLine() ? { idToken: S.idToken } : { phone: S.phone };
+const ICON = {
+  user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.2-4.2 4.3-6 8-6s6.8 1.8 8 6"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/></svg>',
+  pin: '<svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>'
+};
+function guest() { try { return JSON.parse(localStorage.getItem("buyer") || "{}"); } catch (_) { return {}; } }
+function saveCart() { try { localStorage.setItem("cart", JSON.stringify(S.cart)); } catch (_) {} renderBadge(); }
+function closeSheet() { $("#sheet-root").innerHTML = ""; }
+function openSheet(html) {
+  $("#sheet-root").innerHTML = `<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  $("#scrim").addEventListener("click", e => { if (e.target.id === "scrim") closeSheet(); });
+}
+function pickups() { return String(S.settings["取貨方式"] || "面交").split(/[,，、]/).map(s => s.trim()).filter(Boolean); }
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("LINE 登入元件載入失敗")); document.head.appendChild(s); });
+}
+// an expired LINE token: sign in again and come back to this page
+function relogin() { try { liff.logout(); } catch (_) {} liff.login({ redirectUri: location.href }); }
+function handle(err, el) {
+  const m = errMsg(err);
+  if (isLine() && /LINE 登入/.test(m)) { toast("LINE 登入過期，重新登入中…"); setTimeout(relogin, 800); return; }
+  if (el) el.textContent = m; else toast(m);
+}
+
+/* ---------- 導覽 ---------- */
+document.querySelectorAll(".navbtn").forEach(b => b.addEventListener("click", () => {
+  if (b.dataset.view === "cart") {
+    if (S.cart.length) openCheckout(false); else toast("購物車是空的，先去逛逛吧");
+    return;
+  }
+  show(b.dataset.view);
+}));
+function show(view) {
+  S.view = view;
+  document.querySelectorAll(".navbtn[role=tab]").forEach(x => x.setAttribute("aria-selected", x.dataset.view === view));
+  ["shop", "mine", "member"].forEach(v => $("#view-" + v).hidden = v !== view);
+  scrollTo(0, 0);
+  if (view === "mine") {
+    $("#lookup").hidden = isLine();
+    if (isLine() || S.phone) loadMine(); else $("#mresult").innerHTML = "";
+  }
+  if (view === "member") renderMember(false);
+}
+
+/* ---------- 逛賣場 ---------- */
+function load() {
+  return api("getShop").then(d => {
+    S.products = d.products; S.settings = d.settings;
+    const name = S.settings["店名"] || "揪團下單小舖";
+    document.title = name; $("#shopname").textContent = name;
+    const n = $("#notice"); n.hidden = !S.settings["公告"]; n.textContent = S.settings["公告"] || "";
+    const pills = (S.settings["帳號"] ? ["可匯款"] : []).concat(pickups());
+    const info = $("#shopinfo"); info.hidden = !pills.length;
+    info.innerHTML = `<div class="pills">${pills.map(p => `<span class="pill">${esc(p)}</span>`).join("")}</div>`;
+    S.cart = S.cart.filter(c => S.products.some(p => p.id === c.pid)); saveCart();
+    renderShop();
+  }).catch(e => { $("#plist").innerHTML = `<div class="empty">載入失敗：${esc(errMsg(e))}</div>`; });
+}
+
+function renderShop() {
+  if (!S.products.length) { $("#plist").innerHTML = `<div class="empty">目前沒有上架的商品，請稍後再來看看。</div>`; return; }
+  $("#plist").innerHTML = `<div class="grid">${S.products.map(p => {
+    const left = p.variants.reduce((a, v) => a + v.left, 0);
+    return `<button class="card" data-pid="${esc(p.id)}"><div class="ph">${photo(p)}</div><div class="info">
+      <div class="name">${esc(p.title)}</div><div class="price">${money(p.price)}</div>
+      <div class="meta">${p.closed ? `<span class="chip off">已結單</span>` : left === 0 ? `<span class="chip off">售完</span>` : left <= 3 ? `<span class="chip hot">剩 ${left} 件</span>` : ""}
+      ${p.closeAt && !p.closed ? `<span class="chip">${esc(p.closeAt.slice(5).replace("-", "/"))} 結單</span>` : ""}</div></div></button>`;
+  }).join("")}</div>`;
+  document.querySelectorAll(".card").forEach(c => c.addEventListener("click", () => openProduct(c.dataset.pid)));
+}
+
+function inCart(pid, variant) { const c = S.cart.find(x => x.pid === pid && x.variant === variant); return c ? c.qty : 0; }
+
+function openProduct(pid) {
+  const p = S.products.find(x => x.id === pid); if (!p) return;
+  const qty = {};
+  openSheet(`<div class="ph">${photo(p)}</div><h2>${esc(p.title)}</h2><div class="price">${money(p.price)}</div>
+    ${p.desc ? `<div class="desc">${esc(p.desc)}</div>` : ""}
+    <div class="label">選擇規格與數量</div>
+    <div class="variants">${p.variants.map((v, i) => { const r = v.left - inCart(p.id, v.name); return `<div class="vrow ${r <= 0 ? "out" : ""}">
+      <div><div>${esc(v.name)}</div><div class="left">${v.left === 0 ? "售完" : r <= 0 ? "已全部在購物車" : v.left <= 3 ? `剩 ${v.left} 件` : ""}</div></div>
+      <div class="stepper"><button type="button" data-i="${i}" data-d="-1" aria-label="減少">−</button><span id="q${i}">0</span><button type="button" data-i="${i}" data-d="1" aria-label="增加" ${r <= 0 || p.closed ? "disabled" : ""}>+</button></div></div>`; }).join("")}</div>
+    <div class="total"><span>小計</span><span class="price" id="tot">0</span></div>
+    <div class="actions"><button class="btn ghost" id="cl">關閉</button><button class="btn" id="add" ${p.closed ? "disabled" : ""}>${p.closed ? "已結單" : "加入購物車"}</button></div>`);
+  const upd = () => { let t = 0; p.variants.forEach((v, i) => { $("#q" + i).textContent = qty[i] || 0; t += (qty[i] || 0) * p.price; }); $("#tot").textContent = money(t); };
+  document.querySelectorAll(".stepper button").forEach(b => b.addEventListener("click", () => {
+    const i = +b.dataset.i, v = p.variants[i], max = v.left - inCart(p.id, v.name);
+    qty[i] = Math.max(0, Math.min(max, (qty[i] || 0) + +b.dataset.d)); upd();
+  }));
+  $("#cl").onclick = closeSheet;
+  $("#add").onclick = () => {
+    const add = p.variants.map((v, i) => ({ pid: p.id, variant: v.name, qty: qty[i] || 0 })).filter(x => x.qty > 0);
+    if (!add.length) { toast("請先選擇規格和數量"); return; }
+    add.forEach(a => { const c = S.cart.find(x => x.pid === a.pid && x.variant === a.variant); if (c) c.qty += a.qty; else S.cart.push(a); });
+    saveCart(); closeSheet(); toast("已加入購物車");
+  };
+}
+
+/* ---------- 購物車、結帳 ---------- */
+function cartLines() { return S.cart.map(c => { const p = S.products.find(x => x.id === c.pid) || {}; return Object.assign({}, c, { title: p.title, price: p.price || 0 }); }); }
+function renderBadge() {
+  const n = S.cart.reduce((a, c) => a + c.qty, 0), b = $("#badge");
+  b.hidden = !n; b.textContent = n > 99 ? "99+" : n;
+}
+
+function openCheckout(editing) {
+  const lines = cartLines(), total = lines.reduce((a, c) => a + c.qty * c.price, 0);
+  const g = guest(), m = S.me || {};
+  const saved = isLine() && m.name && m.phone && m.pickup;
+  const pickOpts = sel => pickups().map(x => `<option ${x === sel ? "selected" : ""}>${esc(x)}</option>`).join("");
+  let who;
+  if (isLine()) {
+    who = `<div class="buyer">${m.picture ? `<img src="${esc(m.picture)}" alt="">` : ""}<div class="grow"><b>${esc(m.lineName)}</b><div class="hint">用這個 LINE 帳號下單</div></div></div>`;
+    who += saved && !editing
+      ? `<div class="buyer"><div class="grow"><div class="hint">收件資料</div><b>${esc(m.name)}・${esc(m.phone)}</b><div>${esc(m.pickup)}</div></div><button type="button" class="linkbtn" id="edit">修改</button></div>`
+      : `<div class="row2">
+          <div class="field"><label for="f-name">收件人姓名</label><input id="f-name" required maxlength="30" value="${esc(m.name || m.lineName || "")}" autocomplete="name"></div>
+          <div class="field"><label for="f-phone">手機號碼</label><input id="f-phone" required inputmode="numeric" placeholder="0912345678" value="${esc(m.phone || "")}" autocomplete="tel"></div>
+        </div>
+        <div class="field"><label for="f-pick">取貨方式</label><select id="f-pick">${pickOpts(m.pickup)}</select></div>
+        <p class="hint">只要填這一次，下次會自動帶入。</p>`;
+  } else {
+    who = `<div class="row2">
+        <div class="field"><label for="f-name">姓名</label><input id="f-name" required maxlength="30" value="${esc(g.name || "")}" autocomplete="name"></div>
+        <div class="field"><label for="f-line">LINE 名稱</label><input id="f-line" required maxlength="40" value="${esc(g.line || "")}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="f-phone">手機號碼（查訂單用）</label><input id="f-phone" required inputmode="numeric" placeholder="0912345678" value="${esc(g.phone || "")}" autocomplete="tel"></div>
+        <div class="field"><label for="f-pick">取貨方式</label><select id="f-pick">${pickOpts(g.pickup)}</select></div>
+      </div>`;
+  }
+  openSheet(`<h2>購物車</h2>
+    <ul class="items">${lines.map((c, i) => `<li><span>${esc(c.title)}・${esc(c.variant)} × ${c.qty}</span><span>$${money(c.qty * c.price)} <button type="button" class="linkbtn" data-rm="${i}">移除</button></span></li>`).join("")}</ul>
+    <div class="total"><span>合計</span><span class="price">${money(total)}</span></div>
+    <form id="of">${who}
+      <div class="field"><label for="f-note">備註（可不填）</label><input id="f-note" maxlength="200" placeholder="例：可以和朋友的單合併寄"></div>
+      <div class="err" id="oerr"></div>
+      <div class="actions"><button type="button" class="btn ghost" id="cl">繼續逛</button><button class="btn" id="sub">${isLine() ? "+1 送出訂單" : "送出訂單"}</button></div>
+    </form>`);
+  $("#cl").onclick = closeSheet;
+  const ed = $("#edit"); if (ed) ed.onclick = () => openCheckout(true);
+  document.querySelectorAll("[data-rm]").forEach(x => x.addEventListener("click", () => {
+    S.cart.splice(+x.dataset.rm, 1); saveCart(); if (S.cart.length) openCheckout(editing); else closeSheet();
+  }));
+  $("#of").addEventListener("submit", e => {
+    e.preventDefault();
+    const val = id => { const el = $(id); return el ? el.value.trim() : ""; };
+    const info = $("#f-name")
+      ? { name: val("#f-name"), phone: val("#f-phone").replace(/\D/g, ""), pickup: val("#f-pick"), line: val("#f-line") }
+      : { name: m.name, phone: m.phone, pickup: m.pickup };
+    info.note = val("#f-note");
+    if (!/^09\d{8}$/.test(info.phone)) { $("#oerr").textContent = "手機號碼請輸入 09 開頭的 10 碼數字。"; return; }
+    if (!isLine()) {
+      S.phone = info.phone;
+      try { localStorage.setItem("buyer", JSON.stringify({ name: info.name, line: info.line, phone: info.phone, pickup: info.pickup })); } catch (_) {}
+    }
+    $("#sub").disabled = true; $("#sub").textContent = "送出中…";
+    const body = Object.assign({}, info, isLine() ? { idToken: S.idToken } : {}, { items: S.cart.map(c => ({ pid: c.pid, variant: c.variant, qty: c.qty })) });
+    api("placeOrder", body).then(r => {
+      if (isLine()) Object.assign(S.me, { name: info.name, phone: info.phone, pickup: info.pickup });
+      S.cart = []; saveCart(); load(); showDone(r.orderNo, r.total);
+    }).catch(err => { handle(err, $("#oerr")); $("#sub").disabled = false; $("#sub").textContent = "送出訂單"; load(); });
+  });
+}
+
+/* ---------- 付款 ---------- */
+function payBlock(orderNo, total) {
+  const s = S.settings;
+  return `<div class="paybox"><div class="hint">應付金額</div><div class="due">$${money(total)}</div>
+    ${s["帳號"] ? `<dl class="acct"><dt>銀行</dt><dd>${esc(s["銀行"])}</dd><dt>帳號</dt><dd>${esc(s["帳號"])} <button type="button" class="btn small ghost" data-copy="${esc(String(s["帳號"]).replace(/[\s-]/g, ""))}">複製</button></dd>${s["戶名"] ? `<dt>戶名</dt><dd>${esc(s["戶名"])}</dd>` : ""}</dl>${s["付款說明"] ? `<p class="hint">${esc(s["付款說明"])}</p>` : ""}`
+      : `<p class="hint">賣家還沒公布匯款帳號，請留意社群公告。</p>`}
+    <form class="report" data-order="${esc(orderNo)}">
+      <div class="field"><label>匯款後填你的帳號末五碼</label><input inputmode="numeric" maxlength="5" placeholder="例：12345" required></div>
+      <button class="btn">回報已匯款</button></form><div class="err"></div></div>`;
+}
+function bindPay(root, onDone) {
+  root.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => copyText(b.dataset.copy, "已複製帳號")));
+  root.querySelectorAll("form.report[data-order]").forEach(f => f.addEventListener("submit", e => {
+    e.preventDefault();
+    const inp = f.querySelector("input"), err = f.nextElementSibling, btn = f.querySelector("button"), v = inp.value.trim();
+    if (!/^\d{5}$/.test(v)) { err.textContent = "請輸入 5 位數字。"; return; }
+    btn.disabled = true;
+    api("reportPayment", Object.assign(ident(), { orderNo: f.dataset.order, last5: v }))
+      .then(() => { toast("已回報，賣家對帳後會更新狀態"); if (onDone) onDone(); })
+      .catch(x => { handle(x, err); btn.disabled = false; });
+  }));
+}
+function showDone(orderNo, total) {
+  openSheet(`<h2>下單成功！</h2><p>訂單編號 <b>${esc(orderNo)}</b></p>
+    ${payBlock(orderNo, total)}
+    <p class="hint">可以晚點再回報末五碼，到下方「訂購紀錄」就找得到這筆訂單。</p>
+    <div class="actions"><button class="btn ghost" id="cl">完成</button></div>`);
+  $("#cl").onclick = closeSheet;
+  bindPay($("#sheet-root"), closeSheet);
+}
+
+/* ---------- 訂購紀錄 ---------- */
+$("#lf").addEventListener("submit", e => {
+  e.preventDefault(); $("#lerr").textContent = "";
+  const ph = $("#l-phone").value.replace(/\D/g, "");
+  if (!/^09\d{8}$/.test(ph)) { $("#lerr").textContent = "請輸入 09 開頭的 10 碼手機號碼。"; return; }
+  S.phone = ph; loadMine();
+});
+function loadMine() {
+  const box = $("#mresult"); box.innerHTML = `<div class="loading">查詢中…</div>`;
+  api("myOrders", ident()).then(list => {
+    if (!list.length) { box.innerHTML = `<div class="empty">還沒有訂單。到「逛賣場」挑好規格，加入購物車就能下單。</div>`; return; }
+    box.innerHTML = list.map(o => `<div class="order"><div class="order-head"><span class="order-no">${esc(o.orderNo)}</span><span class="st st-${esc(o.status)}">${o.status === "待付款" ? "未付款" : esc(o.status)}</span></div>
+      <div class="hint">${esc(o.time)}・${esc(o.pickup)}${o.last5 ? `・末五碼 ${esc(o.last5)}` : ""}</div>
+      <ul class="items">${o.items.map(i => `<li><span>${esc(i.title)}・${esc(i.variant)} × ${i.qty}</span><span>$${money(i.price * i.qty)}</span></li>`).join("")}</ul>
+      <div class="total" style="margin:8px 0 0"><span>合計</span><span class="price">${money(o.total)}</span></div>
+      ${o.status === "待付款" ? payBlock(o.orderNo, o.total) : ""}</div>`).join("");
+    bindPay(box, loadMine);
+  }).catch(err => { box.innerHTML = ""; handle(err, isLine() ? null : $("#lerr")); });
+}
+
+/* ---------- 會員 ---------- */
+function renderMember(editing) {
+  const el = $("#view-member");
+  if (!isLine()) {
+    const g = guest();
+    el.innerHTML = `<div class="profile"><div><b>${esc(g.name || "訪客")}</b><div style="font-size:.85rem;opacity:.9">${g.line ? "LINE：" + esc(g.line) : "還沒有下過單"}</div></div></div>
+      <div class="card-box inforows">
+        <div class="inforow">${ICON.phone}<span>${esc(g.phone || "—")}</span></div>
+        <div class="inforow">${ICON.pin}<span>${esc(g.pickup || "—")}</span></div>
+      </div>
+      <p class="hint">這些資料只存在你這支手機上，下次結帳會自動帶入。</p>`;
+    return;
+  }
+  const m = S.me;
+  if (!editing) {
+    el.innerHTML = `<div class="profile">${m.picture ? `<img src="${esc(m.picture)}" alt="">` : ""}<div><b>${esc(m.lineName)}</b><div style="font-size:.85rem;opacity:.9">已用 LINE 登入</div></div></div>
+      <div class="card-box inforows">
+        <div class="inforow">${ICON.user}<span>${esc(m.name || "還沒填收件人")}</span></div>
+        <div class="inforow">${ICON.phone}<span>${esc(m.phone || "還沒填手機")}</span></div>
+        <div class="inforow">${ICON.pin}<span>${esc(m.pickup || "還沒選取貨方式")}</span></div>
+      </div>
+      <button class="btn block" id="medit">修改收件資料</button>`;
+    $("#medit").onclick = () => renderMember(true);
+    return;
+  }
+  el.innerHTML = `<div class="panel"><h3>修改收件資料</h3>
+    <form id="mf">
+      <div class="field"><label for="m-name">收件人姓名</label><input id="m-name" required maxlength="30" value="${esc(m.name || m.lineName)}"></div>
+      <div class="field"><label for="m-phone">手機號碼</label><input id="m-phone" required inputmode="numeric" value="${esc(m.phone)}" placeholder="0912345678"></div>
+      <div class="field"><label for="m-pick">取貨方式</label><select id="m-pick">${pickups().map(x => `<option ${x === m.pickup ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+      <div class="err" id="merr"></div>
+      <div class="actions"><button type="button" class="btn ghost" id="mcancel">取消</button><button class="btn" id="msave">儲存</button></div>
+    </form></div>`;
+  $("#mcancel").onclick = () => renderMember(false);
+  $("#mf").addEventListener("submit", e => {
+    e.preventDefault();
+    const d = { name: $("#m-name").value.trim(), phone: $("#m-phone").value.replace(/\D/g, ""), pickup: $("#m-pick").value };
+    if (!/^09\d{8}$/.test(d.phone)) { $("#merr").textContent = "手機號碼請輸入 09 開頭的 10 碼數字。"; return; }
+    $("#msave").disabled = true;
+    api("saveProfile", Object.assign({ idToken: S.idToken }, d))
+      .then(() => { Object.assign(S.me, d); toast("已儲存"); renderMember(false); })
+      .catch(err => { handle(err, $("#merr")); $("#msave").disabled = false; });
+  });
+}
+
+/* ---------- 開始 ---------- */
+function renderWho() {
+  const w = $("#who"); w.hidden = false;
+  w.innerHTML = S.me.picture ? `<img src="${esc(S.me.picture)}" alt="${esc(S.me.lineName)}">` : `<span>${esc(S.me.lineName)}</span>`;
+}
+async function boot() {
+  renderBadge();
+  const g = guest(); if (g.phone) { $("#l-phone").value = g.phone; S.phone = g.phone; }
+  if (CFG.LIFF_ID) {
+    try {
+      if (!window.liff) await loadScript("https://static.line-scdn.net/liff/edge/2/sdk.js");
+      await liff.init({ liffId: CFG.LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+      S.idToken = liff.getIDToken();
+      S.me = await api("me", { idToken: S.idToken });
+      if (S.me.line) renderWho();
+    } catch (e) {
+      if (/LINE 登入已過期/.test(errMsg(e))) { relogin(); return; }
+      const n = $("#notice"); n.hidden = false; n.textContent = "LINE 登入沒有成功（" + errMsg(e) + "），請關掉頁面重新打開。";
+    }
+  }
+  load();
+}
+boot();
+</script>
+</body>
+</html>
