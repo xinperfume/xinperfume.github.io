@@ -59,7 +59,7 @@ function call(action, data) {
 }
 function refresh() {
   return call("adminData").then(d => {
-    A.data = d;
+    A.data = d; d.products = d.products.map(normProduct); d.categories = d.categories || [];
     const l = $("#sheetlink"); l.href = d.sheetUrl; l.hidden = false;
     $("#shopname").firstChild.textContent = d.settings["店名"] || "揪團下單小舖";
     render();
@@ -110,29 +110,46 @@ function renderOrders() {
 
 function renderProducts() {
   const p = A.editing || {};
+  // 照片清單在畫面上增刪，按儲存才寫回試算表
+  A.photos = A.photos && A.photosFor === (p.id || "") ? A.photos : (p.images || []).slice();
+  A.photosFor = p.id || "";
   $("#view-products").innerHTML = `<div class="panel"><h3>${p.id ? "編輯商品" : "上架新商品"}</h3>
     <form id="pf">
-      <div class="field"><label for="p-title">商品名稱</label><input id="p-title" required value="${esc(p.title || "")}" placeholder="例：小熊拼接衣"></div>
+      <div class="field"><label for="p-title">商品名稱</label><input id="p-title" required value="${esc(p.title || "")}" placeholder="例：CHLOE 玫瑰晨曦 香精 30ML"></div>
       <div class="row2">
         <div class="field"><label for="p-price">價格（NT$）</label><input id="p-price" type="number" min="0" required value="${esc(p.price == null ? "" : p.price)}"></div>
-        <div class="field"><label for="p-close">結單日（可不填）</label><input id="p-close" type="date" value="${esc(p.closeAt || "")}"></div>
+        <div class="field"><label for="p-cat">分類（可不填）</label><input id="p-cat" list="catlist" maxlength="20" value="${esc(p.category || "")}" placeholder="例：現貨、預購、公司貨">
+          <datalist id="catlist">${(A.data.categories || []).map(c => `<option value="${esc(c)}">`).join("")}</datalist></div>
       </div>
-      <div class="field"><label for="p-var">規格與庫存</label><input id="p-var" required value="${esc(p.variantsText || "")}" placeholder="90:3, 100:2, 110:5">
-        <span class="hint">寫「規格:數量」，多個用逗號隔開；只有一種就寫「單一:10」。數量是總共能賣幾件，已賣出的會自動扣。</span></div>
+      <div class="field"><label for="p-var">規格與庫存</label><input id="p-var" required value="${esc(p.variantsText || "")}" placeholder="30ml:3:3999, 50ml:2:5200">
+        <span class="hint">寫「規格:數量」，多個用逗號隔開；只有一種就寫「單一:10」。每個規格價格不同時，寫成「規格:數量:價格」，例如「小樣:10:350」。</span></div>
+      <div class="row2">
+        <div class="field"><label for="p-close">結單日（可不填）</label><input id="p-close" type="date" value="${esc(p.closeAt || "")}"></div>
+        <div class="field"><label>&nbsp;</label><label class="check"><input id="p-pre" type="checkbox" ${p.preorder ? "checked" : ""}> 允許預購（庫存賣完還能繼續收單）</label></div>
+      </div>
       <div class="field"><label for="p-desc">商品說明</label><textarea id="p-desc" placeholder="材質、尺寸、預計到貨時間…">${esc(p.desc || "")}</textarea></div>
-      <div class="field"><label for="p-img">商品照片</label><input id="p-img" type="file" accept="image/*">
-        <span class="hint" id="imghint">${p.image ? "已有照片，重新選擇會取代。" : "照片會存到你的 Google 雲端硬碟。"}</span></div>
+      <div class="field"><label for="p-img">商品照片（最多 10 張，第一張是封面）</label>
+        <div class="thumbs" id="thumbs">${A.photos.map((u, i) => `<div class="thumb"><img src="${esc(u)}" alt="" referrerpolicy="no-referrer"><button type="button" data-rm="${i}" aria-label="移除這張照片">×</button>${i ? "" : `<span class="first">封面</span>`}</div>`).join("")}</div>
+        <input id="p-img" type="file" accept="image/*" multiple>
+        <span class="hint" id="imghint">可以一次選好幾張。照片會存到你的 Google 雲端硬碟。</span></div>
       <div class="err" id="perr"></div>
       <div class="actions">${p.id ? `<button type="button" class="btn ghost" id="pcancel">取消編輯</button>` : ""}<button class="btn" id="psave">${p.id ? "儲存修改" : "上架"}</button></div>
     </form></div>
     <div class="panel"><h3>全部商品</h3>${A.data.products.length ? `<div class="plist">${A.data.products.map(x => `<div class="pitem">
       <div class="ph">${photo(x)}</div><div class="grow"><b>${esc(x.title)}</b>
-      <div class="hint">NT$${money(x.price)}・${x.variants.map(v => `${esc(v.name)} 賣出${v.sold}／剩${v.left}`).join("、")}</div></div>
+      <div class="hint">${x.category ? esc(x.category) + "・" : ""}${x.variants.map(v => `${esc(v.name)} $${money(v.price)} 賣出${v.sold}／剩${v.stockLeft}`).join("、")}</div></div>
+      ${x.preorder ? `<span class="chip pre">預購</span>` : ""}
       <span class="chip ${x.active ? "" : "off"}">${x.active ? (x.closed ? "已結單" : "上架中") : "已下架"}</span>
       <button class="btn small ghost" data-edit="${esc(x.id)}">編輯</button>
       <button class="btn small ghost" data-toggle="${esc(x.id)}">${x.active ? "下架" : "重新上架"}</button></div>`).join("")}</div>` : `<p class="hint">還沒有商品，用上面的表單新增第一件。</p>`}</div>`;
-  const c = $("#pcancel"); if (c) c.onclick = () => { A.editing = null; renderProducts(); };
-  document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => { A.editing = A.data.products.find(x => x.id === b.dataset.edit); renderProducts(); scrollTo({ top: 0, behavior: "smooth" }); });
+  const c = $("#pcancel"); if (c) c.onclick = () => { A.editing = null; A.photos = null; renderProducts(); };
+  document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => { A.editing = A.data.products.find(x => x.id === b.dataset.edit); A.photos = null; renderProducts(); scrollTo({ top: 0, behavior: "smooth" }); });
+  // 移除照片時保留表單上已經打的字
+  const keep = () => ["p-title", "p-price", "p-cat", "p-var", "p-close", "p-desc"].reduce((o, id) => (o[id] = $("#" + id).value, o), { pre: $("#p-pre").checked });
+  document.querySelectorAll("#thumbs [data-rm]").forEach(b => b.onclick = () => {
+    const k = keep(); A.photos.splice(+b.dataset.rm, 1); renderProducts();
+    Object.keys(k).forEach(id => { if (id === "pre") $("#p-pre").checked = k.pre; else $("#" + id).value = k[id]; });
+  });
   document.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => {
     const x = A.data.products.find(y => y.id === b.dataset.toggle); b.disabled = true;
     call("setProductActive", { id: x.id, active: !x.active }).then(refresh).then(() => toast(x.active ? "已下架" : "已重新上架"))
@@ -140,11 +157,16 @@ function renderProducts() {
   });
   $("#pf").addEventListener("submit", e => {
     e.preventDefault(); $("#psave").disabled = true; $("#perr").textContent = "";
-    const f = $("#p-img").files[0];
-    const img = f ? resize(f).then(url => { $("#imghint").textContent = "照片上傳中…"; return call("uploadImage", { dataUrl: url, filename: f.name }); }) : Promise.resolve(p.image || "");
-    img.then(image => call("saveProduct", { product: { id: p.id, title: $("#p-title").value.trim(), price: $("#p-price").value, closeAt: $("#p-close").value,
-        variants: $("#p-var").value.trim(), desc: $("#p-desc").value, image, active: p.id ? p.active : true } }))
-      .then(() => { toast(p.id ? "已儲存" : "已上架！"); A.editing = null; return refresh(); })
+    const files = [...$("#p-img").files].slice(0, Math.max(0, 10 - A.photos.length));
+    // 一張一張上傳，免得 Apps Script 同時處理太多張
+    const uploads = files.reduce((chain, f, i) => chain.then(list => {
+      $("#imghint").textContent = `照片上傳中…（${i + 1}/${files.length}）`;
+      return resize(f).then(url => call("uploadImage", { dataUrl: url, filename: f.name })).then(u => list.concat(u));
+    }), Promise.resolve([]));
+    uploads.then(added => call("saveProduct", { product: { id: p.id, title: $("#p-title").value.trim(), price: $("#p-price").value,
+        category: $("#p-cat").value.trim(), preorder: $("#p-pre").checked, closeAt: $("#p-close").value,
+        variants: $("#p-var").value.trim(), desc: $("#p-desc").value, images: A.photos.concat(added), active: p.id ? p.active : true } }))
+      .then(() => { toast(p.id ? "已儲存" : "已上架！"); A.editing = null; A.photos = null; return refresh(); })
       .catch(err => { $("#perr").textContent = errMsg(err); $("#psave").disabled = false; });
   });
 }

@@ -39,3 +39,10 @@ function photo(p) {
   const t = String(p.title || "?").replace(/^\s*[［\[【(（][^］\]】)）]*[］\]】)）]\s*/, "");
   return esc((t || p.title || "?").slice(0, 1));
 }
+
+// 舊版後端沒有分類、預購、多張照片、規格價格這些欄位時，補上預設值
+function normProduct(p) {
+  const variants = (p.variants || []).map(v => Object.assign({ price: p.price, stockLeft: v.left }, v));
+  return Object.assign({ category: "", preorder: false, sold: variants.reduce((a, v) => a + (v.sold || 0), 0),
+    createdAt: 0, images: p.image ? [p.image] : [] }, p, { variants });
+}
