@@ -186,8 +186,11 @@ function renderShop() {
 
 function gallery(p) {
   if (p.images.length < 2) return `<div class="ph">${photo(p)}</div>`;
-  return `<div class="gallery"><div class="slides" id="slides">${p.images.map((u, i) => `<div class="ph"><img src="${esc(u)}" alt="${esc(p.title)} 第 ${i + 1} 張" loading="lazy" referrerpolicy="no-referrer"></div>`).join("")}</div>
-    <div class="dots" id="dots">${p.images.map((_, i) => `<span class="${i ? "" : "on"}"></span>`).join("")}</div></div>`;
+  // 不用 lazy：LINE 內建瀏覽器在橫向捲動區常常不載入後面的照片
+  return `<div class="gallery"><div class="gwrap"><div class="slides" id="slides">${p.images.map((u, i) => `<div class="ph"><img src="${esc(u)}" alt="${esc(p.title)} 第 ${i + 1} 張" referrerpolicy="no-referrer"></div>`).join("")}</div>
+    <button type="button" class="gnav prev" data-g="-1" aria-label="上一張">‹</button><button type="button" class="gnav next" data-g="1" aria-label="下一張">›</button>
+    <span class="gcount" id="gcount">1 / ${p.images.length}</span></div>
+    <div class="gthumbs" id="dots">${p.images.map((u, i) => `<button type="button" class="${i ? "" : "on"}" data-gi="${i}" aria-label="第 ${i + 1} 張"><img src="${esc(u)}" alt="" referrerpolicy="no-referrer"></button>`).join("")}</div></div>`;
 }
 
 function inCart(pid, variant) { const c = S.cart.find(x => x.pid === pid && x.variant === variant); return c ? c.qty : 0; }
@@ -212,10 +215,17 @@ function openProduct(pid) {
     <div class="actions"><button class="btn ghost" id="cl">關閉</button><button class="btn" id="add" ${p.closed ? "disabled" : ""}>${p.closed ? "已結單" : "加入購物車"}</button></div>
     ${p.desc ? `<div class="label">商品說明</div><div class="desc">${esc(p.desc)}</div>` : ""}`);
   const sl = $("#slides");
-  if (sl) sl.addEventListener("scroll", () => {
-    const i = Math.round(sl.scrollLeft / sl.clientWidth);
-    document.querySelectorAll("#dots span").forEach((d, j) => d.className = i === j ? "on" : "");
-  });
+  if (sl) {
+    const cur = () => Math.round(sl.scrollLeft / sl.clientWidth);
+    const go = i => sl.scrollTo({ left: Math.max(0, Math.min(p.images.length - 1, i)) * sl.clientWidth, behavior: "smooth" });
+    sl.addEventListener("scroll", () => {
+      const i = cur();
+      document.querySelectorAll("#dots button").forEach((d, j) => d.className = i === j ? "on" : "");
+      $("#gcount").textContent = `${i + 1} / ${p.images.length}`;
+    });
+    document.querySelectorAll(".gnav").forEach(b => b.onclick = () => go(cur() + +b.dataset.g));
+    document.querySelectorAll("#dots button").forEach(b => b.onclick = () => go(+b.dataset.gi));
+  }
   const upd = () => { let t = 0; p.variants.forEach((v, i) => { $("#q" + i).textContent = qty[i] || 0; t += (qty[i] || 0) * v.price; }); $("#tot").textContent = money(t); };
   document.querySelectorAll(".stepper button").forEach(b => b.addEventListener("click", () => {
     const i = +b.dataset.i, v = p.variants[i], max = v.left - inCart(p.id, v.name);
