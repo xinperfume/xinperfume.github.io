@@ -126,6 +126,9 @@ function openCvsMap(sub, draft) {
   const id = String(S.settings["綠界商店代號"] || "").trim();
   const f = document.createElement("form");
   f.method = "post";
+  // 優先用新視窗開地圖，選好後門市直接傳回這頁；新視窗被擋時，才整頁跳過去
+  const w = window.open("", "cvsmap");
+  if (w) { f.target = "cvsmap"; S.cvsWin = w; }
   // 沒填綠界商店代號時用綠界測試環境
   f.action = id ? "https://logistics.ecpay.com.tw/Express/map" : "https://logistics-stage.ecpay.com.tw/Express/map";
   const fields = { MerchantID: id || "2000933", LogisticsType: "CVS", LogisticsSubType: sub + "C2C", IsCollection: "N",
@@ -133,16 +136,26 @@ function openCvsMap(sub, draft) {
   Object.keys(fields).forEach(k => { const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = fields[k]; f.appendChild(i); });
   document.body.appendChild(f); f.submit();
 }
+function setStore(st) {
+  Object.keys(st).forEach(k => st[k] = String(st[k] || "").trim());
+  S.store = st;
+  try { localStorage.setItem("cvsStore", JSON.stringify(st)); } catch (_) {}
+}
+// 新視窗選好門市後，Apps Script 回傳頁會把門市資料傳到這裡
+window.addEventListener("message", e => {
+  if (!/\.googleusercontent\.com$|^https:\/\/script\.google\.com$/.test(e.origin) || !e.data || !e.data.cvs) return;
+  setStore(e.data.cvs);
+  try { if (S.cvsWin) S.cvsWin.close(); } catch (_) {}
+  const sel = $("#f-pick"); if (sel && sel.onchange) sel.onchange();
+  toast("已選好門市");
+});
 // 從地圖回來時，網址 # 後面帶著門市資料
 function takeCvsReturn() {
   const m = location.hash.match(/^#cvs=(.+)$/);
   if (!m) return null;
   history.replaceState(null, "", location.pathname + location.search);
   try {
-    const st = JSON.parse(decodeURIComponent(m[1]));
-    Object.keys(st).forEach(k => st[k] = String(st[k] || "").trim());
-    S.store = st;
-    localStorage.setItem("cvsStore", JSON.stringify(S.store));
+    setStore(JSON.parse(decodeURIComponent(m[1])));
     return JSON.parse(sessionStorage.getItem("ckdraft") || "null") || {};
   } catch (_) { return {}; }
 }
