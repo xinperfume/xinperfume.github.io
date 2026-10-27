@@ -269,3 +269,7 @@ h1{font-weight:400}
 .gthumbs button{flex:0 0 52px;height:52px;padding:0;border:1px solid var(--line);background:var(--card);cursor:pointer;opacity:.55;border-radius:var(--radius);overflow:hidden}
 .gthumbs button.on{opacity:1;border-color:var(--text)}
 .gthumbs img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* 價格還沒填的商品 */
+.price.tbd::before{content:none}
+.price.tbd{color:var(--muted);font-weight:400;font-size:.9em}

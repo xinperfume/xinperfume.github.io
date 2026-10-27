@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="logo.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 <script src="config.js"></script>
 <script src="common.js"></script>
 </head>
@@ -148,6 +148,7 @@ function load() {
 function priceText(p) {
   const ps = p.variants.map(v => v.price);
   const lo = Math.min.apply(null, ps.length ? ps : [p.price]), hi = Math.max.apply(null, ps.length ? ps : [p.price]);
+  if (!hi) return "價格待確認";
   return lo === hi ? money(lo) : `${money(lo)} ~ ${money(hi)}`;
 }
 function stockTag(p) {
@@ -178,7 +179,7 @@ function renderShop() {
   $("#count").textContent = `共 ${list.length} 件商品`;
   if (!list.length) { $("#plist").innerHTML = `<div class="empty">找不到符合的商品，換個關鍵字或分類試試。</div>`; return; }
   $("#plist").innerHTML = `<div class="grid">${list.map(p => `<button class="card" data-pid="${esc(p.id)}"><div class="ph">${photo(p)}</div><div class="info">
-      <div class="name">${esc(p.title)}</div><div class="price">${priceText(p)}</div>
+      <div class="name">${esc(p.title)}</div><div class="price${priceText(p) === "價格待確認" ? " tbd" : ""}">${priceText(p)}</div>
       <div class="meta">${stockTag(p)}${p.closeAt && !p.closed ? `<span class="chip">${esc(p.closeAt.slice(5).replace("-", "/"))} 結單</span>` : ""}</div>
       ${p.sold ? `<div class="sold">已售 ${p.sold}</div>` : ""}</div></button>`).join("")}</div>`;
   document.querySelectorAll(".card").forEach(c => c.addEventListener("click", () => openProduct(c.dataset.pid)));
@@ -198,6 +199,8 @@ function inCart(pid, variant) { const c = S.cart.find(x => x.pid === pid && x.va
 function openProduct(pid) {
   const p = S.products.find(x => x.id === pid); if (!p) return;
   const qty = {};
+  // 價格還沒填（0 元）的商品只能看、不能下單
+  const tbd = !p.variants.some(v => v.price) && !p.price;
   const vNote = v => {
     const r = v.left - inCart(p.id, v.name);
     if (r <= 0) return v.left === 0 ? "售完" : "已全部在購物車";
@@ -206,13 +209,13 @@ function openProduct(pid) {
   };
   openSheet(`${gallery(p)}
     <div class="tags">${p.category ? `<span class="chip">#${esc(p.category)}</span>` : ""}${p.preorder ? `<span class="chip pre">#允許預購</span>` : ""}${p.sold ? `<span class="chip off">已售 ${p.sold}</span>` : ""}</div>
-    <h2>${esc(p.title)}</h2><div class="price">${priceText(p)}</div>
+    <h2>${esc(p.title)}</h2><div class="price${priceText(p) === "價格待確認" ? " tbd" : ""}">${priceText(p)}</div>
     <div class="label">選擇規格與數量</div>
     <div class="variants">${p.variants.map((v, i) => { const r = v.left - inCart(p.id, v.name); return `<div class="vrow ${r <= 0 ? "out" : ""}">
-      <div><div>${esc(v.name)}　<b class="vprice">$${money(v.price)}</b></div><div class="left">${vNote(v)}</div></div>
-      <div class="stepper"><button type="button" data-i="${i}" data-d="-1" aria-label="減少">−</button><span id="q${i}">0</span><button type="button" data-i="${i}" data-d="1" aria-label="增加" ${r <= 0 || p.closed ? "disabled" : ""}>+</button></div></div>`; }).join("")}</div>
+      <div><div>${esc(v.name)}　<b class="vprice">${tbd ? "價格待確認" : "$" + money(v.price)}</b></div><div class="left">${vNote(v)}</div></div>
+      <div class="stepper"><button type="button" data-i="${i}" data-d="-1" aria-label="減少">−</button><span id="q${i}">0</span><button type="button" data-i="${i}" data-d="1" aria-label="增加" ${r <= 0 || p.closed || tbd ? "disabled" : ""}>+</button></div></div>`; }).join("")}</div>
     <div class="total"><span>小計</span><span class="price" id="tot">0</span></div>
-    <div class="actions"><button class="btn ghost" id="cl">關閉</button><button class="btn" id="add" ${p.closed ? "disabled" : ""}>${p.closed ? "已結單" : "加入購物車"}</button></div>
+    <div class="actions"><button class="btn ghost" id="cl">關閉</button><button class="btn" id="add" ${p.closed || tbd ? "disabled" : ""}>${tbd ? "價格待確認" : p.closed ? "已結單" : "加入購物車"}</button></div>
     ${p.desc ? `<div class="label">商品說明</div><div class="desc">${esc(p.desc)}</div>` : ""}`);
   const sl = $("#slides");
   if (sl) {
