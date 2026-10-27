@@ -201,6 +201,9 @@ function renderSettings() {
       ${f("店名", "店名", "XIN歆星香水/流行代購")}
       ${f("公告", "商品頁最上方的公告（可不填）", "例：本週五結單，下週三面交", true)}
       ${f("取貨方式", "取貨方式（用逗號隔開）", "面交, 7-11 賣貨便, 全家好賣+, 宅配")}
+      <h3 style="margin-top:12px">超商選門市（綠界）</h3>
+      <div class="row2">${f("綠界商店代號", "綠界商店代號（MerchantID）", "例：3001234")}${f("網站網址", "買家網頁網址", "https://xinperfume.github.io/")}</div>
+      <p class="hint">取貨方式裡有「超商、7-11、全家、萊爾富、OK」字樣的，結帳時會出現「選擇門市」按鈕，開啟超商地圖選店。綠界商店代號空著時是測試模式（可以試選門市，但不是正式帳號）。</p>
       <h3 style="margin-top:12px">LINE 登入</h3>
       ${f("LINE頻道ID", "LINE Login 頻道的 Channel ID（10 位數字）", "例：2001234567")}
       <p class="hint">填了以後，買家一定要用 LINE 登入才能下單。網頁的 config.js 也要填 LIFF ID，兩個要一起設定。</p>
@@ -209,7 +212,7 @@ function renderSettings() {
     <p class="hint">管理密碼請直接在 Google 試算表的「設定」工作表修改。</p></div>`;
   $("#sf").addEventListener("submit", e => {
     e.preventDefault(); $("#ssave").disabled = true;
-    const data = {}; ["銀行", "帳號", "戶名", "付款說明", "店名", "公告", "取貨方式", "LINE頻道ID"].forEach(k => data[k] = $("#s-" + k).value.trim());
+    const data = {}; ["銀行", "帳號", "戶名", "付款說明", "店名", "公告", "取貨方式", "綠界商店代號", "網站網址", "LINE頻道ID"].forEach(k => data[k] = $("#s-" + k).value.trim());
     call("saveSettings", { settings: data }).then(() => { Object.assign(A.data.settings, data); toast("已儲存"); })
       .catch(err => toast(errMsg(err))).then(() => { $("#ssave").disabled = false; });
   });

@@ -94,6 +94,58 @@ function openSheet(html) {
   $("#scrim").addEventListener("click", e => { if (e.target.id === "scrim") closeSheet(); });
 }
 function pickups() { return String(S.settings["取貨方式"] || "面交").split(/[,，、]/).map(s => s.trim()).filter(Boolean); }
+
+/* ---------- 超商選門市（綠界電子地圖） ---------- */
+// [綠界代碼, 顯示名稱, 取貨方式文字比對]；取貨方式只寫「超商取貨」時，開放前三家
+const CVS = [["UNIMART", "7-11", /7-?11|統一|小七/], ["FAMI", "全家", /全家/], ["HILIFE", "萊爾富", /萊爾富/], ["OKMART", "OK", /\bOK\b/i]];
+try { S.store = JSON.parse(localStorage.getItem("cvsStore") || "null"); } catch (_) {}
+const pickBase = p => String(p || "").split("｜")[0];
+function cvsBrands(opt) {
+  const hit = CVS.filter(c => c[2].test(opt || ""));
+  return hit.length ? hit : /超商/.test(opt || "") ? CVS.slice(0, 3) : [];
+}
+function storeFor(opt) {
+  const st = S.store, b = st && cvsBrands(opt).find(c => st.sub.replace("C2C", "") === c[0]);
+  return b ? Object.assign({ brand: b[1] }, st) : null;
+}
+// 超商取貨還沒選門市的話，回傳空字串
+function pickupText(opt) {
+  if (!cvsBrands(opt).length) return opt;
+  const st = storeFor(opt);
+  return st ? `${opt}｜${st.brand} ${st.name || ""}（店號 ${st.id}）${st.addr ? " " + st.addr : ""}` : "";
+}
+function cvsBox(opt) {
+  const brands = cvsBrands(opt);
+  if (!brands.length) return "";
+  const st = storeFor(opt);
+  return `<div class="cvsbox">${st ? `<div class="hint">取貨門市</div><b>${esc(st.brand)} ${esc(st.name || "")}</b><div class="hint">店號 ${esc(st.id)}${st.addr ? "・" + esc(st.addr) : ""}</div>` : `<div class="hint">請選擇取貨門市</div>`}
+    <div class="actions" style="justify-content:flex-start;margin-top:6px">${brands.map(c => `<button type="button" class="btn small ghost" data-cvs="${c[0]}">${st ? "改選" : "選"} ${esc(c[1])} 門市</button>`).join("")}</div></div>`;
+}
+function openCvsMap(sub, draft) {
+  try { sessionStorage.setItem("ckdraft", JSON.stringify(draft)); } catch (_) {}
+  const id = String(S.settings["綠界商店代號"] || "").trim();
+  const f = document.createElement("form");
+  f.method = "post";
+  // 沒填綠界商店代號時用綠界測試環境
+  f.action = id ? "https://logistics.ecpay.com.tw/Express/map" : "https://logistics-stage.ecpay.com.tw/Express/map";
+  const fields = { MerchantID: id || "2000933", LogisticsType: "CVS", LogisticsSubType: sub + "C2C", IsCollection: "N",
+    ServerReplyURL: CFG.API_URL, ExtraData: "xin", Device: sub !== "FAMI" && /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 1 : 0 };
+  Object.keys(fields).forEach(k => { const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = fields[k]; f.appendChild(i); });
+  document.body.appendChild(f); f.submit();
+}
+// 從地圖回來時，網址 # 後面帶著門市資料
+function takeCvsReturn() {
+  const m = location.hash.match(/^#cvs=(.+)$/);
+  if (!m) return null;
+  history.replaceState(null, "", location.pathname + location.search);
+  try {
+    const st = JSON.parse(decodeURIComponent(m[1]));
+    Object.keys(st).forEach(k => st[k] = String(st[k] || "").trim());
+    S.store = st;
+    localStorage.setItem("cvsStore", JSON.stringify(S.store));
+    return JSON.parse(sessionStorage.getItem("ckdraft") || "null") || {};
+  } catch (_) { return {}; }
+}
 function loadScript(src) {
   return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("LINE 登入元件載入失敗")); document.head.appendChild(s); });
 }
@@ -259,8 +311,8 @@ function renderBadge() {
 function openCheckout(editing) {
   const lines = cartLines(), total = lines.reduce((a, c) => a + c.qty * c.price, 0);
   const g = guest(), m = S.me || {};
-  const saved = isLine() && m.name && m.phone && m.pickup;
-  const pickOpts = sel => pickups().map(x => `<option ${x === sel ? "selected" : ""}>${esc(x)}</option>`).join("");
+  const saved = isLine() && m.name && m.phone && m.pickup && !(cvsBrands(pickBase(m.pickup)).length && m.pickup.indexOf("｜") < 0);
+  const pickOpts = sel => pickups().map(x => `<option ${x === pickBase(sel) ? "selected" : ""}>${esc(x)}</option>`).join("");
   let who;
   if (isLine()) {
     who = `<div class="buyer">${m.picture ? `<img src="${esc(m.picture)}" alt="">` : ""}<div class="grow"><b>${esc(m.lineName)}</b><div class="hint">用這個 LINE 帳號下單</div></div></div>`;
@@ -271,6 +323,7 @@ function openCheckout(editing) {
           <div class="field"><label for="f-phone">手機號碼</label><input id="f-phone" required inputmode="numeric" placeholder="0912345678" value="${esc(m.phone || "")}" autocomplete="tel"></div>
         </div>
         <div class="field"><label for="f-pick">取貨方式</label><select id="f-pick">${pickOpts(m.pickup)}</select></div>
+        <div id="cvs"></div>
         <p class="hint">只要填這一次，下次會自動帶入。</p>`;
   } else {
     who = `<div class="row2">
@@ -280,7 +333,8 @@ function openCheckout(editing) {
       <div class="row2">
         <div class="field"><label for="f-phone">手機號碼（查訂單用）</label><input id="f-phone" required inputmode="numeric" placeholder="0912345678" value="${esc(g.phone || "")}" autocomplete="tel"></div>
         <div class="field"><label for="f-pick">取貨方式</label><select id="f-pick">${pickOpts(g.pickup)}</select></div>
-      </div>`;
+      </div>
+      <div id="cvs"></div>`;
   }
   openSheet(`<h2>購物車</h2>
     <ul class="items">${lines.map((c, i) => `<li><span>${esc(c.title)}・${esc(c.variant)} × ${c.qty}</span><span>$${money(c.qty * c.price)} <button type="button" class="linkbtn" data-rm="${i}">移除</button></span></li>`).join("")}</ul>
@@ -292,16 +346,24 @@ function openCheckout(editing) {
     </form>`);
   $("#cl").onclick = closeSheet;
   const ed = $("#edit"); if (ed) ed.onclick = () => openCheckout(true);
+  const val = id => { const el = $(id); return el ? el.value.trim() : ""; };
+  const draft = () => ({ editing, name: val("#f-name"), phone: val("#f-phone"), line: val("#f-line"), pick: val("#f-pick"), note: val("#f-note") });
+  const drawCvs = () => {
+    const box = $("#cvs"); if (!box) return;
+    box.innerHTML = cvsBox(val("#f-pick"));
+    box.querySelectorAll("[data-cvs]").forEach(b => b.onclick = () => openCvsMap(b.dataset.cvs, draft()));
+  };
+  if ($("#f-pick")) { $("#f-pick").onchange = drawCvs; drawCvs(); }
   document.querySelectorAll("[data-rm]").forEach(x => x.addEventListener("click", () => {
     S.cart.splice(+x.dataset.rm, 1); saveCart(); if (S.cart.length) openCheckout(editing); else closeSheet();
   }));
   $("#of").addEventListener("submit", e => {
     e.preventDefault();
-    const val = id => { const el = $(id); return el ? el.value.trim() : ""; };
     const info = $("#f-name")
-      ? { name: val("#f-name"), phone: val("#f-phone").replace(/\D/g, ""), pickup: val("#f-pick"), line: val("#f-line") }
+      ? { name: val("#f-name"), phone: val("#f-phone").replace(/\D/g, ""), pickup: pickupText(val("#f-pick")), line: val("#f-line") }
       : { name: m.name, phone: m.phone, pickup: m.pickup };
     info.note = val("#f-note");
+    if (!info.pickup) { $("#oerr").textContent = "請先按「選門市」選好取貨的超商門市。"; return; }
     if (!/^09\d{8}$/.test(info.phone)) { $("#oerr").textContent = "手機號碼請輸入 09 開頭的 10 碼數字。"; return; }
     if (!isLine()) {
       S.phone = info.phone;
@@ -396,7 +458,7 @@ function renderMember(editing) {
     <form id="mf">
       <div class="field"><label for="m-name">收件人姓名</label><input id="m-name" required maxlength="30" value="${esc(m.name || m.lineName)}"></div>
       <div class="field"><label for="m-phone">手機號碼</label><input id="m-phone" required inputmode="numeric" value="${esc(m.phone)}" placeholder="0912345678"></div>
-      <div class="field"><label for="m-pick">取貨方式</label><select id="m-pick">${pickups().map(x => `<option ${x === m.pickup ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+      <div class="field"><label for="m-pick">取貨方式</label><select id="m-pick">${pickups().map(x => `<option ${x === pickBase(m.pickup) ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
       <div class="err" id="merr"></div>
       <div class="actions"><button type="button" class="btn ghost" id="mcancel">取消</button><button class="btn" id="msave">儲存</button></div>
     </form></div>`;
@@ -418,6 +480,7 @@ function renderWho() {
   w.innerHTML = S.me.picture ? `<img src="${esc(S.me.picture)}" alt="${esc(S.me.lineName)}">` : `<span>${esc(S.me.lineName)}</span>`;
 }
 async function boot() {
+  let back = takeCvsReturn();
   renderBadge();
   const g = guest(); if (g.phone) { $("#l-phone").value = g.phone; S.phone = g.phone; }
   if (CFG.LIFF_ID) {
@@ -428,12 +491,21 @@ async function boot() {
       S.idToken = liff.getIDToken();
       S.me = await api("me", { idToken: S.idToken });
       if (S.me.line) renderWho();
+      // 沒登入 LINE 時，門市資料會先跟著 LINE 登入繞一圈，liff.init 之後才回到網址上
+      if (!back) back = takeCvsReturn();
     } catch (e) {
       if (/LINE 登入已過期/.test(errMsg(e))) { relogin(); return; }
       const n = $("#notice"); n.hidden = false; n.textContent = "LINE 登入沒有成功（" + errMsg(e) + "），請關掉頁面重新打開。";
     }
   }
-  load();
+  load().then(() => {
+    if (!back || !S.cart.length) return;
+    openCheckout(!!back.editing && isLine());
+    const put = (id, v) => { const el = $(id); if (el && v != null && v !== "") el.value = v; };
+    put("#f-name", back.name); put("#f-phone", back.phone); put("#f-line", back.line); put("#f-pick", back.pick); put("#f-note", back.note);
+    if ($("#f-pick")) $("#f-pick").onchange();
+    toast("已選好門市");
+  });
 }
 boot();
 </script>
