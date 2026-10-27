@@ -33,7 +33,16 @@ function copyText(text, msg) {
   else fallback();
 }
 
-function photo(p) {
+// 列表用的小圖：雲端硬碟直接要小尺寸，其他網站的照片透過 wsrv.nl 縮圖
+function thumb(u) {
+  if (/^https:\/\/drive\.google\.com\/thumbnail\?/.test(u)) return u.replace(/([?&]sz=)w\d+/, "$1w400");
+  if (/^https?:\/\//.test(u)) return "https://wsrv.nl/?url=" + encodeURIComponent(u) + "&w=400&output=webp&q=75";
+  return u;
+}
+
+// small：商品列表用小圖，縮圖服務失敗時改回原圖
+function photo(p, small) {
+  if (p.image && small && thumb(p.image) !== p.image) return `<img src="${esc(thumb(p.image))}" data-full="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=this.dataset.full">`;
   if (p.image) return `<img src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`;
   // first real character, skipping a leading tag like ［範例］
   const t = String(p.title || "?").replace(/^\s*[［\[【(（][^］\]】)）]*[］\]】)）]\s*/, "");

@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chiron+GoRound+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css?v=4">
 <script src="config.js"></script>
-<script src="common.js"></script>
+<script src="common.js?v=2"></script>
 </head>
 <body>
 <header>
@@ -137,7 +137,7 @@ function renderProducts() {
       <div class="actions">${p.id ? `<button type="button" class="btn ghost" id="pcancel">取消編輯</button>` : ""}<button class="btn" id="psave">${p.id ? "儲存修改" : "上架"}</button></div>
     </form></div>
     <div class="panel"><h3>全部商品</h3>${A.data.products.length ? `<div class="plist">${A.data.products.map(x => `<div class="pitem">
-      <div class="ph">${photo(x)}</div><div class="grow"><b>${esc(x.title)}</b>
+      <div class="ph">${photo(x, true)}</div><div class="grow"><b>${esc(x.title)}</b>
       <div class="hint">${x.category ? esc(x.category) + "・" : ""}${x.variants.map(v => `${esc(v.name)} $${money(v.price)} 賣出${v.sold}／剩${v.stockLeft}`).join("、")}</div></div>
       ${x.preorder ? `<span class="chip pre">預購</span>` : ""}
       <span class="chip ${x.active ? "" : "off"}">${x.active ? (x.closed ? "已結單" : "上架中") : "已下架"}</span>

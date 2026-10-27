@@ -16,10 +16,14 @@
 <link rel="icon" href="logo.jpg">
 <link rel="apple-touch-icon" href="logo.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="preconnect" href="https://wsrv.nl">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css?v=4">
 <script src="config.js"></script>
-<script src="common.js"></script>
+<script src="common.js?v=2"></script>
 </head>
 <body>
 <header>
@@ -191,23 +195,34 @@ function show(view) {
 }
 
 /* ---------- 逛賣場 ---------- */
+// 先用上次存下的商品畫出來，後端回來後資料有變才重畫
 function load() {
+  let cached = null;
+  try { cached = localStorage.getItem("shopCache"); } catch (_) {}
+  if (cached) { try { showShop(JSON.parse(cached), true); } catch (_) { cached = null; } }
   return api("getShop").then(d => {
-    S.products = d.products.map(normProduct); S.settings = d.settings;
-    const name = S.settings["店名"] || "XIN歆星香水/流行代購";
-    document.title = name; $("#shopname").textContent = name;
-    const n = $("#notice"); n.hidden = !S.settings["公告"]; n.textContent = S.settings["公告"] || "";
-    const pills = (S.settings["帳號"] ? ["可匯款"] : []).concat(pickups());
-    const info = $("#shopinfo"); info.hidden = !pills.length;
-    info.innerHTML = `<div class="pills">${pills.map(p => `<span class="pill">${esc(p)}</span>`).join("")}</div>`;
-    S.categories = d.categories || [];
-    if (S.cat && S.categories.indexOf(S.cat) < 0) S.cat = "";
-    S.cart = S.cart.filter(c => S.products.some(p => p.id === c.pid)); saveCart();
-    renderCats(); renderShop();
-    // 網址帶 ?p=商品ID 時，直接打開那件商品
-    const pid = new URLSearchParams(location.search).get("p");
-    if (pid && !S.opened) { S.opened = true; if (S.products.some(p => p.id === pid)) openProduct(pid); }
-  }).catch(e => { $("#plist").innerHTML = `<div class="empty">載入失敗：${esc(errMsg(e))}</div>`; });
+    const fresh = JSON.stringify(d);
+    if (fresh !== cached) showShop(d);
+    try { localStorage.setItem("shopCache", fresh); } catch (_) {}
+  }).catch(e => { if (!cached) $("#plist").innerHTML = `<div class="empty">載入失敗：${esc(errMsg(e))}</div>`; });
+}
+
+function showShop(d, fromCache) {
+  S.products = d.products.map(normProduct); S.settings = d.settings;
+  const name = S.settings["店名"] || "XIN歆星香水/流行代購";
+  document.title = name; $("#shopname").textContent = name;
+  const n = $("#notice"); n.hidden = !S.settings["公告"]; n.textContent = S.settings["公告"] || "";
+  const pills = (S.settings["帳號"] ? ["可匯款"] : []).concat(pickups());
+  const info = $("#shopinfo"); info.hidden = !pills.length;
+  info.innerHTML = `<div class="pills">${pills.map(p => `<span class="pill">${esc(p)}</span>`).join("")}</div>`;
+  S.categories = d.categories || [];
+  if (S.cat && S.categories.indexOf(S.cat) < 0) S.cat = "";
+  // 舊快取可能少了新商品，購物車只用後端最新資料來清
+  if (!fromCache) { S.cart = S.cart.filter(c => S.products.some(p => p.id === c.pid)); saveCart(); }
+  renderCats(); renderShop();
+  // 網址帶 ?p=商品ID 時，直接打開那件商品
+  const pid = new URLSearchParams(location.search).get("p");
+  if (pid && !S.opened) { S.opened = true; if (S.products.some(p => p.id === pid)) openProduct(pid); }
 }
 
 function priceText(p) {
@@ -243,7 +258,7 @@ function renderShop() {
   list = list.slice().sort(S.sort === "hot" ? (a, b) => b.sold - a.sold || b.createdAt - a.createdAt : (a, b) => b.createdAt - a.createdAt);
   $("#count").textContent = `共 ${list.length} 件商品`;
   if (!list.length) { $("#plist").innerHTML = `<div class="empty">找不到符合的商品，換個關鍵字或分類試試。</div>`; return; }
-  $("#plist").innerHTML = `<div class="grid">${list.map(p => `<button class="card" data-pid="${esc(p.id)}"><div class="ph">${photo(p)}</div><div class="info">
+  $("#plist").innerHTML = `<div class="grid">${list.map(p => `<button class="card" data-pid="${esc(p.id)}"><div class="ph">${photo(p, true)}</div><div class="info">
       <div class="name">${esc(p.title)}</div><div class="price${priceText(p) === "價格待確認" ? " tbd" : ""}">${priceText(p)}</div>
       <div class="meta">${stockTag(p)}${p.closeAt && !p.closed ? `<span class="chip">${esc(p.closeAt.slice(5).replace("-", "/"))} 結單</span>` : ""}</div>
       ${p.sold ? `<div class="sold">已售 ${p.sold}</div>` : ""}</div></button>`).join("")}</div>`;
@@ -494,6 +509,8 @@ function renderWho() {
 }
 async function boot() {
   let back = takeCvsReturn();
+  // 商品和 LINE 登入同時開始載入，不用等登入完才讀商品
+  const shopReady = load();
   renderBadge();
   const g = guest(); if (g.phone) { $("#l-phone").value = g.phone; S.phone = g.phone; }
   if (CFG.LIFF_ID) {
@@ -511,7 +528,7 @@ async function boot() {
       const n = $("#notice"); n.hidden = false; n.textContent = "LINE 登入沒有成功（" + errMsg(e) + "），請關掉頁面重新打開。";
     }
   }
-  load().then(() => {
+  shopReady.then(() => {
     if (!back || !S.cart.length) return;
     openCheckout(!!back.editing && isLine());
     const put = (id, v) => { const el = $(id); if (el && v != null && v !== "") el.value = v; };
