@@ -458,9 +458,12 @@ function showDone(orderNo, total) {
   openSheet(`<h2>下單成功！</h2><p>訂單編號 <b>${esc(orderNo)}</b></p>
     ${payBlock(orderNo, total)}
     <p class="hint">可以晚點再回報末五碼，到下方「訂購紀錄」就找得到這筆訂單。</p>
+    <div id="donefriend" class="notice friendbar" hidden><span>加入官方帳號好友，付款確認和出貨時會用 LINE 通知你</span><a class="btn small" href="https://line.me/R/ti/p/@xinperfume">加好友</a></div>
     <div class="actions"><button class="btn ghost" id="cl">完成</button></div>`);
   $("#cl").onclick = closeSheet;
   bindPay($("#sheet-root"), closeSheet);
+  // 剛下完單最需要通知，這裡不管有沒有按過 × 都提醒
+  if (isLine() && window.liff && liff.getFriendship) liff.getFriendship().then(f => { const el = $("#donefriend"); if (el) el.hidden = !!f.friendFlag; }, () => {});
 }
 
 /* ---------- 訂購紀錄 ---------- */
