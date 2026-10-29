@@ -21,7 +21,7 @@
 <link rel="preconnect" href="https://script.googleusercontent.com">
 <link rel="preconnect" href="https://wsrv.nl">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 <script src="config.js"></script>
 <script src="common.js?v=2"></script>
 </head>
@@ -37,6 +37,7 @@
 <main class="wrap">
   <section id="view-shop">
     <div id="notice" class="notice" hidden></div>
+    <div id="addfriend" class="notice friendbar" hidden><span>加入官方帳號好友，付款確認和出貨時會用 LINE 通知你</span><a class="btn small" id="af-go" href="https://line.me/R/ti/p/@xinperfume">加好友</a><button type="button" class="af-x" id="af-x" aria-label="先不要">×</button></div>
     <div id="shopinfo" class="card-box shopinfo" hidden></div>
     <div class="tools">
       <div class="searchbox"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="q" type="search" placeholder="搜尋商品名稱、品牌" aria-label="搜尋商品"></div>
@@ -507,6 +508,22 @@ function renderWho() {
   const w = $("#who"); w.hidden = false;
   w.innerHTML = S.me.picture ? `<img src="${esc(S.me.picture)}" alt="${esc(S.me.lineName)}">` : `<span>${esc(S.me.lineName)}</span>`;
 }
+// 還沒加官方帳號好友的話，收不到訂單的 LINE 通知；按 × 之後 3 天內不再提醒
+const AF_SNOOZE = 3 * 864e5;
+function checkFriend() {
+  const bar = $("#addfriend");
+  let snoozed = 0;
+  try { snoozed = Number(localStorage.getItem("afSnooze")) || 0; } catch (_) {}
+  if (!liff.getFriendship || Date.now() - snoozed < AF_SNOOZE) return;
+  liff.getFriendship().then(f => { bar.hidden = !!f.friendFlag; }, () => {});
+}
+function initFriendBar() {
+  $("#af-x").onclick = () => { $("#addfriend").hidden = true; try { localStorage.setItem("afSnooze", String(Date.now())); } catch (_) {} };
+  $("#af-go").onclick = () => { $("#addfriend").hidden = true; };
+  // 加完好友回到這頁時再查一次，加好了就不再顯示
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && isLine()) checkFriend(); });
+  checkFriend();
+}
 async function boot() {
   let back = takeCvsReturn();
   // 商品和 LINE 登入同時開始載入，不用等登入完才讀商品
@@ -520,7 +537,7 @@ async function boot() {
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
       S.idToken = liff.getIDToken();
       S.me = await api("me", { idToken: S.idToken });
-      if (S.me.line) renderWho();
+      if (S.me.line) { renderWho(); initFriendBar(); }
       // 沒登入 LINE 時，門市資料會先跟著 LINE 登入繞一圈，liff.init 之後才回到網址上
       if (!back) back = takeCvsReturn();
     } catch (e) {

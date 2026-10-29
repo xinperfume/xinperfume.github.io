@@ -274,3 +274,9 @@ h1{font-weight:400}
 /* 價格還沒填的商品 */
 .price.tbd::before{content:none}
 .price.tbd{color:var(--muted);font-weight:400;font-size:.9em}
+
+/* 加官方帳號好友提示 */
+.friendbar{display:flex;align-items:center;gap:10px}
+.friendbar span{flex:1}
+.friendbar .btn{text-decoration:none;white-space:nowrap}
+.af-x{border:0;background:none;color:var(--muted);font-size:1.2rem;line-height:1;padding:4px 6px;cursor:pointer}
