@@ -21,7 +21,7 @@
 <link rel="preconnect" href="https://script.googleusercontent.com">
 <link rel="preconnect" href="https://wsrv.nl">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 <script src="config.js"></script>
 <script src="common.js?v=2"></script>
 </head>
@@ -315,7 +315,7 @@ function openProduct(pid) {
     ${closeLeft(p) >= 0 ? `<div class="countdown${closeLeft(p) < 864e5 ? " soon" : ""}" id="cd">⏰ ${closeLong(p)}</div>` : ""}
     <div class="label">選擇規格與數量</div>
     <div class="variants">${p.variants.map((v, i) => { const r = v.left - inCart(p.id, v.name); return `<div class="vrow ${r <= 0 ? "out" : ""}">
-      <div><div>${esc(v.name)}　<b class="vprice">${tbd ? "價格待確認" : "$" + money(v.price)}</b></div><div class="left">${vNote(v)}</div></div>
+      <div><div>${esc(v.name)}　<b class="vprice">${tbd ? "價格待確認" : "$" + money(v.price)}</b></div><div class="left">${vNote(v)}${v.left === 0 && isLine() && !p.closed ? ` <button type="button" class="linkbtn" data-notify="${esc(v.name)}">到貨通知我</button>` : ""}</div></div>
       <div class="stepper"><button type="button" data-i="${i}" data-d="-1" aria-label="減少">−</button><span id="q${i}">0</span><button type="button" data-i="${i}" data-d="1" aria-label="增加" ${r <= 0 || p.closed || tbd ? "disabled" : ""}>+</button></div></div>`; }).join("")}</div>
     <div class="total"><span>小計</span><span class="price" id="tot">0</span></div>
     <div class="actions"><button class="btn ghost" id="cl">關閉</button><button class="btn" id="add" ${p.closed || tbd ? "disabled" : ""}>${tbd ? "價格待確認" : p.closed ? "已結單" : "加入購物車"}</button></div>
@@ -340,6 +340,11 @@ function openProduct(pid) {
   // 倒數每 30 秒更新；商品頁關掉（#cd 不在了）就停
   clearInterval(S.cdTimer);
   if ($("#cd")) S.cdTimer = setInterval(() => { const el = $("#cd"); if (!el) return clearInterval(S.cdTimer); el.textContent = "⏰ " + closeLong(p); }, 30000);
+  document.querySelectorAll("[data-notify]").forEach(b => b.onclick = () => {
+    b.disabled = true;
+    api("subscribeRestock", { idToken: S.idToken, pid: p.id, variant: b.dataset.notify })
+      .then(() => { b.textContent = "補貨時會用 LINE 通知你"; }, e => { b.disabled = false; toast(errMsg(e)); });
+  });
   $("#cl").onclick = closeSheet;
   $("#add").onclick = () => {
     const add = p.variants.map((v, i) => ({ pid: p.id, variant: v.name, qty: qty[i] || 0 })).filter(x => x.qty > 0);
@@ -392,8 +397,9 @@ function openCheckout(editing) {
   }
   openSheet(`<h2>購物車</h2>
     <ul class="items">${lines.map((c, i) => `<li><span>${esc(c.title)}・${esc(c.variant)} × ${c.qty}</span><span>$${money(c.qty * c.price)} <button type="button" class="linkbtn" data-rm="${i}">移除</button></span></li>`).join("")}</ul>
-    <div class="total"><span>合計</span><span class="price">${money(total)}</span></div>
+    <div id="sum"></div>
     <form id="of">${who}
+      <div class="field"><label for="f-coupon">優惠碼（可不填）</label><div class="couponrow"><input id="f-coupon" maxlength="30" autocomplete="off" value="${esc(S.coupon ? S.coupon.code : "")}"><button type="button" class="btn small ghost" id="cpbtn">套用</button></div><div class="hint" id="cpmsg">${S.coupon ? esc("已套用：" + S.coupon.label) : ""}</div></div>
       <div class="field"><label for="f-note">備註（可不填）</label><input id="f-note" maxlength="200" placeholder="例：可以和朋友的單合併寄"></div>
       <div class="err" id="oerr"></div>
       <div class="actions"><button type="button" class="btn ghost" id="cl">繼續逛</button><button class="btn" id="sub">${isLine() ? "+1 送出訂單" : "送出訂單"}</button></div>
@@ -407,7 +413,24 @@ function openCheckout(editing) {
     box.innerHTML = cvsBox(val("#f-pick"));
     box.querySelectorAll("[data-cvs]").forEach(b => b.onclick = () => openCvsMap(b.dataset.cvs, draft()));
   };
-  if ($("#f-pick")) { $("#f-pick").onchange = drawCvs; drawCvs(); }
+  // 運費和折扣只是先算給買家看，實際金額以後端算的為準
+  const curPick = () => $("#f-pick") ? val("#f-pick") : m.pickup;
+  const drawSum = () => {
+    const c = calcCharges(total, curPick(), S.coupon);
+    $("#sum").innerHTML = `<div class="total sub"><span>小計</span><span>$${money(total)}</span></div>
+      <div class="total sub"><span>運費${c.feeNote ? `<small>（${esc(c.feeNote)}）</small>` : ""}</span><span>${c.fee ? "$" + money(c.fee) : "免運"}</span></div>
+      ${c.discount ? `<div class="total sub"><span>優惠碼 ${esc(S.coupon.code)}</span><span>−$${money(c.discount)}</span></div>` : ""}
+      <div class="total"><span>合計</span><span class="price">${money(total + c.fee - c.discount)}</span></div>`;
+  };
+  $("#cpbtn").onclick = () => {
+    const code = val("#f-coupon"), msg = $("#cpmsg");
+    if (!code) { S.coupon = null; msg.textContent = ""; drawSum(); return; }
+    $("#cpbtn").disabled = true; msg.textContent = "檢查中…";
+    api("checkCoupon", { code, subtotal: total }).then(c => { S.coupon = c; msg.textContent = "已套用：" + c.label; drawSum(); },
+      e => { S.coupon = null; msg.textContent = errMsg(e); drawSum(); }).then(() => { $("#cpbtn").disabled = false; });
+  };
+  if ($("#f-pick")) { $("#f-pick").onchange = () => { drawCvs(); drawSum(); }; drawCvs(); }
+  drawSum();
   document.querySelectorAll("[data-rm]").forEach(x => x.addEventListener("click", () => {
     S.cart.splice(+x.dataset.rm, 1); saveCart(); if (S.cart.length) openCheckout(editing); else closeSheet();
   }));
@@ -424,12 +447,28 @@ function openCheckout(editing) {
       try { localStorage.setItem("buyer", JSON.stringify({ name: info.name, line: info.line, phone: info.phone, pickup: info.pickup })); } catch (_) {}
     }
     $("#sub").disabled = true; $("#sub").textContent = "送出中…";
-    const body = Object.assign({}, info, isLine() ? { idToken: S.idToken } : {}, { items: S.cart.map(c => ({ pid: c.pid, variant: c.variant, qty: c.qty })) });
+    const body = Object.assign({}, info, isLine() ? { idToken: S.idToken } : {}, { coupon: S.coupon ? S.coupon.code : "", items: S.cart.map(c => ({ pid: c.pid, variant: c.variant, qty: c.qty })) });
     api("placeOrder", body).then(r => {
       if (isLine()) Object.assign(S.me, { name: info.name, phone: info.phone, pickup: info.pickup });
-      S.cart = []; saveCart(); load(); showDone(r.orderNo, r.total);
+      S.cart = []; S.coupon = null; saveCart(); load(); showDone(r.orderNo, r.total);
     }).catch(err => { handle(err, $("#oerr")); $("#sub").disabled = false; $("#sub").textContent = "送出訂單"; load(); });
   });
+}
+
+/* ---------- 運費、優惠碼 ---------- */
+// 和後端 團購加值.gs 的規則一樣：超商取貨收運費、滿額免運、面交免運
+function calcCharges(subtotal, pickup, coupon) {
+  const s = S.settings, num = (v, d) => (v === "" || v == null || isNaN(+v) ? d : +v);
+  const fee0 = num(s["超商運費"], 60), free = num(s["免運門檻"], 1500);
+  const cvs = /超商|7-?11|全家|萊爾富|OK|賣貨便|好賣/i.test(pickup || "");
+  const discount = coupon ? Math.min(coupon.discount || 0, subtotal) : 0;
+  let fee = 0, feeNote = "";
+  if (cvs) {
+    if (coupon && coupon.freeShip) feeNote = "免運券";
+    else if (subtotal >= free) feeNote = `滿 $${money(free)} 免運`;
+    else { fee = fee0; feeNote = `再買 $${money(free - subtotal)} 免運`; }
+  } else feeNote = "面交免運";
+  return { fee, discount, feeNote };
 }
 
 /* ---------- 付款 ---------- */

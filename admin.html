@@ -7,7 +7,7 @@
 <title>賣家後台｜XIN歆星香水/流行代購</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chiron+GoRound+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 <script src="config.js"></script>
 <script src="common.js?v=2"></script>
 </head>
@@ -80,7 +80,9 @@ function renderOrders() {
   const d = A.data, live = d.orders.filter(o => o.status !== "已取消");
   const sum = st => live.filter(o => o.status === st).reduce((a, o) => a + o.total, 0);
   const pick = {};
-  live.forEach(o => o.items.forEach(i => { pick[i.title] = pick[i.title] || {}; pick[i.title][i.variant] = (pick[i.title][i.variant] || 0) + i.qty; }));
+  // 運費、優惠碼那兩列不是商品，不算進叫貨
+  const isCharge = i => !i.variant && /^(運費|優惠碼)/.test(i.title);
+  live.forEach(o => o.items.filter(i => !isCharge(i)).forEach(i => { pick[i.title] = pick[i.title] || {}; pick[i.title][i.variant] = (pick[i.title][i.variant] || 0) + i.qty; }));
   const pickText = Object.keys(pick).map(t => `【${t}】\n` + Object.keys(pick[t]).map(v => `  ${v} × ${pick[t][v]}`).join("\n")).join("\n");
   const rows = d.orders.filter(o => A.filter === "全部" || o.status === A.filter);
   $("#view-orders").innerHTML = `<div class="summary">

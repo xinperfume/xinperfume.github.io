@@ -285,3 +285,12 @@ h1{font-weight:400}
 .chip.cd{background:var(--warn-soft);color:var(--warn)}
 .countdown{margin:6px 0 2px;font-size:.88rem;color:var(--warn)}
 .countdown.soon{color:var(--bad);font-weight:500}
+
+/* 已到貨狀態 */
+.st-已到貨,.st-已到貨::before{color:var(--ok)}
+.st-已到貨::before{content:"📦"}
+/* 結帳：運費、優惠碼 */
+.total.sub{margin:0;font-size:.9rem;font-weight:400;color:var(--muted);padding:2px 0}
+.total.sub small{font-size:.8rem;margin-left:4px}
+.couponrow{display:flex;gap:8px}
+.couponrow input{flex:1}
