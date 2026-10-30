@@ -591,7 +591,18 @@ function initFriendBar() {
   document.addEventListener("visibilitychange", () => { if (!document.hidden && isLine()) checkFriend(); });
   checkFriend();
 }
+// 記一筆逛網站人數：只送瀏覽器裡的隨機代號，不含個資；同一個分頁只記一次，賣家自己的瀏覽器不算
+function trackVisit() {
+  try {
+    if (localStorage.getItem("xin_notrack") || sessionStorage.getItem("xin_hit")) return;
+    let v = localStorage.getItem("xin_vid");
+    if (!v) { v = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("xin_vid", v); }
+    sessionStorage.setItem("xin_hit", "1");
+    api("hit", { vid: v, page: new URLSearchParams(location.search).get("p") ? "商品" : "首頁" }).catch(() => {});
+  } catch (_) {}
+}
 async function boot() {
+  trackVisit();
   let back = takeCvsReturn();
   // 商品和 LINE 登入同時開始載入，不用等登入完才讀商品
   const shopReady = load();
