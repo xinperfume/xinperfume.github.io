@@ -138,13 +138,24 @@ function renderProducts() {
       <div class="err" id="perr"></div>
       <div class="actions">${p.id ? `<button type="button" class="btn ghost" id="pcancel">取消編輯</button>` : ""}<button class="btn" id="psave">${p.id ? "儲存修改" : "上架"}</button></div>
     </form></div>
-    <div class="panel"><h3>全部商品</h3>${A.data.products.length ? `<div class="plist">${A.data.products.map(x => `<div class="pitem">
+    <div class="panel"><h3>全部商品</h3>${A.data.products.length ? `<div class="psearch" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><input id="psearch" type="search" style="flex:1;min-width:180px" placeholder="搜尋商品名稱、分類…" aria-label="搜尋商品" value="${esc(A.pq || "")}"><select id="pstate" style="width:auto" aria-label="篩選上下架">${["全部", "上架中", "已下架"].map(f => `<option ${f === (A.pstate || "全部") ? "selected" : ""}>${f}</option>`).join("")}</select><span class="hint" id="pcount"></span></div><div class="plist">${A.data.products.map(x => `<div class="pitem" data-q="${esc((x.title + " " + (x.category || "")).toLowerCase())}" data-on="${x.active ? 1 : 0}">
       <div class="ph">${photo(x, true)}</div><div class="grow"><b>${esc(x.title)}</b>
       <div class="hint">${x.category ? esc(x.category) + "・" : ""}${x.variants.map(v => `${esc(v.name)} $${money(v.price)} 賣出${v.sold}／剩${v.stockLeft}`).join("、")}</div></div>
       ${x.preorder ? `<span class="chip pre">預購</span>` : ""}
       <span class="chip ${x.active ? "" : "off"}">${x.active ? (x.closed ? "已結單" : "上架中") : "已下架"}</span>
       <button class="btn small ghost" data-edit="${esc(x.id)}">編輯</button>
       <button class="btn small ghost" data-toggle="${esc(x.id)}">${x.active ? "下架" : "重新上架"}</button></div>`).join("")}</div>` : `<p class="hint">還沒有商品，用上面的表單新增第一件。</p>`}</div>`;
+  // 商品多的時候用關鍵字和上下架狀態篩選，只隱藏畫面上的項目
+  const filterList = () => {
+    const words = (A.pq || "").toLowerCase().split(/\s+/).filter(Boolean), st = A.pstate || "全部";
+    let shown = 0;
+    document.querySelectorAll(".plist .pitem").forEach(el => {
+      const ok = words.every(w => el.dataset.q.includes(w)) && (st === "全部" || (st === "上架中") === (el.dataset.on === "1"));
+      el.style.display = ok ? "" : "none"; if (ok) shown++;
+    });
+    const n = $("#pcount"); if (n) n.textContent = `${shown} / ${A.data.products.length} 件`;
+  };
+  const ps = $("#psearch"); if (ps) { ps.oninput = () => { A.pq = ps.value; filterList(); }; $("#pstate").onchange = e => { A.pstate = e.target.value; filterList(); }; filterList(); }
   const c = $("#pcancel"); if (c) c.onclick = () => { A.editing = null; A.photos = null; renderProducts(); };
   document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => { A.editing = A.data.products.find(x => x.id === b.dataset.edit); A.photos = null; renderProducts(); scrollTo({ top: 0, behavior: "smooth" }); });
   // 移除照片時保留表單上已經打的字
