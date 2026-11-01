@@ -172,7 +172,8 @@ function renderProducts() {
       ${x.preorder ? `<span class="chip pre">預購</span>` : ""}
       <span class="chip ${x.active ? "" : "off"}">${x.active ? (x.closed ? "已結單" : "上架中") : "已下架"}</span>
       <button class="btn small ghost" data-edit="${esc(x.id)}">編輯</button>
-      <button class="btn small ghost" data-toggle="${esc(x.id)}">${x.active ? "下架" : "重新上架"}</button></div>`).join("")}</div>` : `<p class="hint">還沒有商品，用上面的表單新增第一件。</p>`}</div>`;
+      <button class="btn small ghost" data-toggle="${esc(x.id)}">${x.active ? "下架" : "重新上架"}</button>
+      <button class="btn small ghost" data-del="${esc(x.id)}" style="color:#b3261e">刪除</button></div>`).join("")}</div>` : `<p class="hint">還沒有商品，用上面的表單新增第一件。</p>`}</div>`;
   // 商品多的時候用關鍵字和上下架狀態篩選，只隱藏畫面上的項目
   const filterList = () => {
     const words = (A.pq || "").toLowerCase().split(/\s+/).filter(Boolean), st = A.pstate || "全部";
@@ -191,6 +192,14 @@ function renderProducts() {
   document.querySelectorAll("#thumbs [data-rm]").forEach(b => b.onclick = () => {
     const k = keep(); A.photos.splice(+b.dataset.rm, 1); renderProducts();
     Object.keys(k).forEach(id => { if (id === "pre") $("#p-pre").checked = k.pre; else $("#" + id).value = k[id]; });
+  });
+  // 刪除是整列移除、救不回來，所以一定先問一次
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    const x = A.data.products.find(y => y.id === b.dataset.del);
+    if (!confirm(`確定要刪除「${x.title}」嗎？\n\n刪除後救不回來；只想暫時不賣，請按「下架」。\n已經下過的訂單不會受影響。`)) return;
+    b.disabled = true;
+    call("deleteProduct", { id: x.id }).then(() => { if (A.editing && A.editing.id === x.id) { A.editing = null; A.photos = null; } return refresh(); })
+      .then(() => toast("已刪除")).catch(err => { toast(errMsg(err)); b.disabled = false; });
   });
   document.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => {
     const x = A.data.products.find(y => y.id === b.dataset.toggle); b.disabled = true;
