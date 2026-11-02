@@ -42,12 +42,14 @@
 
 <script>
 const A = { token: null, data: null, view: "orders", filter: "全部", editing: null };
-try { A.token = sessionStorage.getItem("adm") || null; } catch (_) {}
+// 登入狀態存在 localStorage，同一個瀏覽器的後台分頁都共用，不用每個分頁各登入一次
+try { A.token = localStorage.getItem("adm") || null; } catch (_) {}
+window.addEventListener("storage", e => { if (e.key === "adm" && e.newValue && !A.data) { A.token = e.newValue; refresh(); } });
 
 $("#loginf").addEventListener("submit", e => {
   e.preventDefault(); $("#loginbtn").disabled = true; $("#loginerr").textContent = "";
   api("adminLogin", { password: $("#pw").value }).then(t => {
-    A.token = t; try { sessionStorage.setItem("adm", t); localStorage.setItem("xin_notrack", "1"); } catch (_) {}
+    A.token = t; try { localStorage.setItem("adm", t); localStorage.setItem("xin_notrack", "1"); } catch (_) {}
     return refresh();
   }).catch(err => { $("#loginerr").textContent = errMsg(err); }).then(() => { $("#loginbtn").disabled = false; });
 });
@@ -55,7 +57,7 @@ document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () =>
 
 function call(action, data) {
   return api(action, Object.assign({ token: A.token }, data || {})).catch(err => {
-    if (/登入已過期/.test(errMsg(err))) { A.token = null; A.data = null; try { sessionStorage.removeItem("adm"); } catch (_) {} render(); }
+    if (/登入已過期/.test(errMsg(err))) { A.token = null; A.data = null; try { localStorage.removeItem("adm"); } catch (_) {} render(); }
     throw err;
   });
 }
