@@ -185,7 +185,7 @@ function renderProducts() {
     </form></div>
     <div class="panel"><h3>全部商品</h3>${A.data.products.length ? `<div class="psearch" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><input id="psearch" type="search" style="flex:1;min-width:180px" placeholder="搜尋商品名稱、分類…" aria-label="搜尋商品" value="${esc(A.pq || "")}"><select id="pstate" style="width:auto" aria-label="篩選上下架">${["全部", "上架中", "已下架"].map(f => `<option ${f === (A.pstate || "全部") ? "selected" : ""}>${f}</option>`).join("")}</select><select id="psort" style="width:auto" aria-label="排序">${Object.keys(PSORTS).map(f => `<option ${f === psortNow() ? "selected" : ""}>${f}</option>`).join("")}</select><span class="hint" id="pcount"></span></div><div class="plist">${A.data.products.map((x, i) => `<div class="pitem" data-q="${esc((x.title + " " + (x.category || "")).toLowerCase())}" data-on="${x.active ? 1 : 0}" data-i="${i}">
       <div class="ph">${photo(x, true)}</div><div class="grow"><b>${esc(x.title)}</b>
-      <div class="hint">${x.category ? esc(x.category) + "・" : ""}${x.variants.map(v => `${esc(v.name)} $${money(v.price)} 賣出${v.sold}／剩${v.stockLeft}`).join("、")}</div></div>
+      <div class="hint">${x.category ? esc(x.category) + "・" : ""}${x.variants.map(v => `${esc(v.name)} $${money(v.price)}${v.sold ? ` 賣出${v.sold}` : ""}${v.stockLeft ? `${v.sold ? "／" : " "}剩${v.stockLeft}` : ""}`).join("、")}</div></div>
       ${x.preorder ? `<span class="chip pre">預購</span>` : ""}
       <span class="chip ${x.active ? "" : "off"}">${x.active ? (x.closed ? "已結單" : "上架中") : "已下架"}</span>
       <button class="btn small ghost" data-edit="${esc(x.id)}">編輯</button>
