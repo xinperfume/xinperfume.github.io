@@ -141,6 +141,21 @@ function renderOrders() {
   }));
 }
 
+// 後台商品列表的排序方式；選過的會記在這台瀏覽器
+const PSORTS = {
+  "預設排序": null,
+  "最新上架": (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
+  "最早上架": (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
+  "價格低到高": (a, b) => a.price - b.price,
+  "價格高到低": (a, b) => b.price - a.price,
+  "賣出最多": (a, b) => (b.sold || 0) - (a.sold || 0),
+  "名稱": (a, b) => a.title.localeCompare(b.title, "zh-Hant")
+};
+function psortNow() {
+  if (!A.psort) { try { A.psort = localStorage.getItem("xin_psort"); } catch (_) {} }
+  return PSORTS.hasOwnProperty(A.psort) ? A.psort : "預設排序";
+}
+
 function renderProducts() {
   const p = A.editing || {};
   // 照片清單在畫面上增刪，按儲存才寫回試算表
@@ -168,7 +183,7 @@ function renderProducts() {
       <div class="err" id="perr"></div>
       <div class="actions">${p.id ? `<button type="button" class="btn ghost" id="pcancel">取消編輯</button>` : ""}<button class="btn" id="psave">${p.id ? "儲存修改" : "上架"}</button></div>
     </form></div>
-    <div class="panel"><h3>全部商品</h3>${A.data.products.length ? `<div class="psearch" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><input id="psearch" type="search" style="flex:1;min-width:180px" placeholder="搜尋商品名稱、分類…" aria-label="搜尋商品" value="${esc(A.pq || "")}"><select id="pstate" style="width:auto" aria-label="篩選上下架">${["全部", "上架中", "已下架"].map(f => `<option ${f === (A.pstate || "全部") ? "selected" : ""}>${f}</option>`).join("")}</select><span class="hint" id="pcount"></span></div><div class="plist">${A.data.products.map(x => `<div class="pitem" data-q="${esc((x.title + " " + (x.category || "")).toLowerCase())}" data-on="${x.active ? 1 : 0}">
+    <div class="panel"><h3>全部商品</h3>${A.data.products.length ? `<div class="psearch" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><input id="psearch" type="search" style="flex:1;min-width:180px" placeholder="搜尋商品名稱、分類…" aria-label="搜尋商品" value="${esc(A.pq || "")}"><select id="pstate" style="width:auto" aria-label="篩選上下架">${["全部", "上架中", "已下架"].map(f => `<option ${f === (A.pstate || "全部") ? "selected" : ""}>${f}</option>`).join("")}</select><select id="psort" style="width:auto" aria-label="排序">${Object.keys(PSORTS).map(f => `<option ${f === psortNow() ? "selected" : ""}>${f}</option>`).join("")}</select><span class="hint" id="pcount"></span></div><div class="plist">${A.data.products.map((x, i) => `<div class="pitem" data-q="${esc((x.title + " " + (x.category || "")).toLowerCase())}" data-on="${x.active ? 1 : 0}" data-i="${i}">
       <div class="ph">${photo(x, true)}</div><div class="grow"><b>${esc(x.title)}</b>
       <div class="hint">${x.category ? esc(x.category) + "・" : ""}${x.variants.map(v => `${esc(v.name)} $${money(v.price)} 賣出${v.sold}／剩${v.stockLeft}`).join("、")}</div></div>
       ${x.preorder ? `<span class="chip pre">預購</span>` : ""}
@@ -186,7 +201,14 @@ function renderProducts() {
     });
     const n = $("#pcount"); if (n) n.textContent = `${shown} / ${A.data.products.length} 件`;
   };
-  const ps = $("#psearch"); if (ps) { ps.oninput = () => { A.pq = ps.value; filterList(); }; $("#pstate").onchange = e => { A.pstate = e.target.value; filterList(); }; filterList(); }
+  // 排序只搬動畫面上的項目，不重畫，正在編輯的表單不會被清掉
+  const sortList = () => {
+    const list = $(".plist"), cmp = PSORTS[psortNow()];
+    if (!list) return;
+    const P = A.data.products, items = [...list.children];
+    items.sort((a, b) => (cmp ? cmp(P[a.dataset.i], P[b.dataset.i]) : 0) || a.dataset.i - b.dataset.i).forEach(el => list.appendChild(el));
+  };
+  const ps = $("#psearch"); if (ps) { ps.oninput = () => { A.pq = ps.value; filterList(); }; $("#pstate").onchange = e => { A.pstate = e.target.value; filterList(); }; $("#psort").onchange = e => { A.psort = e.target.value; try { localStorage.setItem("xin_psort", A.psort); } catch (_) {} sortList(); }; sortList(); filterList(); }
   const c = $("#pcancel"); if (c) c.onclick = () => { A.editing = null; A.photos = null; renderProducts(); };
   document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => { A.editing = A.data.products.find(x => x.id === b.dataset.edit); A.photos = null; renderProducts(); scrollTo({ top: 0, behavior: "smooth" }); });
   // 移除照片時保留表單上已經打的字
