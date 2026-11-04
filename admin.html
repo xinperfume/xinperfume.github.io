@@ -7,7 +7,7 @@
 <title>賣家後台｜XIN歆星香水/流行代購</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chiron+GoRound+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 <script src="config.js"></script>
 <script src="common.js?v=2"></script>
 </head>
@@ -110,8 +110,8 @@ function renderOrders() {
   const d = A.data, live = d.orders.filter(o => o.status !== "已取消");
   const sum = st => live.filter(o => o.status === st).reduce((a, o) => a + o.total, 0);
   const pick = {};
-  // 運費、優惠碼那兩列不是商品，不算進叫貨
-  const isCharge = i => !i.variant && /^(運費|優惠碼)/.test(i.title);
+  // 運費、優惠碼、滿額折扣那幾列不是商品，不算進叫貨（滿額贈品有規格「贈品」，要算進叫貨）
+  const isCharge = i => !i.variant && /^(運費|優惠碼|滿額折扣)/.test(i.title);
   live.forEach(o => o.items.filter(i => !isCharge(i)).forEach(i => { pick[i.title] = pick[i.title] || {}; pick[i.title][i.variant] = (pick[i.title][i.variant] || 0) + i.qty; }));
   const pickText = Object.keys(pick).map(t => `【${t}】\n` + Object.keys(pick[t]).map(v => `  ${v} × ${pick[t][v]}`).join("\n")).join("\n");
   const rows = d.orders.filter(o => A.filter === "全部" || o.status === A.filter);
@@ -267,7 +267,7 @@ function resize(file) {
 function renderSettings() {
   const s = A.data.settings;
   const f = (k, label, ph, ta) => `<div class="field"><label for="s-${k}">${label}</label>${ta ? `<textarea id="s-${k}" placeholder="${esc(ph)}">${esc(s[k])}</textarea>` : `<input id="s-${k}" value="${esc(s[k])}" placeholder="${esc(ph)}">`}</div>`;
-  $("#view-settings").innerHTML = `<div class="panel"><h3>收款帳號</h3>
+  $("#view-settings").innerHTML = `<div class="panel" id="bpanel"></div><div class="panel"><h3>收款帳號</h3>
     <form id="sf">
       <div class="row2">${f("銀行", "銀行名稱與代碼", "例：中國信託 822")}${f("帳號", "帳號", "例：1234-5678-9012")}</div>
       <div class="row2">${f("戶名", "戶名（可不填）", "")}${f("付款說明", "付款說明（可不填）", "例：結單後 3 天內匯款")}</div>
@@ -290,6 +290,56 @@ function renderSettings() {
     call("saveSettings", { settings: data }).then(() => { Object.assign(A.data.settings, data); toast("已儲存"); })
       .catch(err => toast(errMsg(err))).then(() => { $("#ssave").disabled = false; });
   });
+  A.banners = (A.data.banners || []).map(b => Object.assign({}, b));
+  renderBanners();
+}
+
+// 首頁橫幅：在畫面上增刪、排序、設定連結，按「儲存橫幅」才整批寫回試算表
+const BANNER_MAX = 6;
+function renderBanners() {
+  const el = $("#bpanel"), B = A.banners, P = A.data.products, cats = A.data.categories || [];
+  if (!el) return;
+  const opts = b => b.type === "product"
+    ? P.map(x => `<option value="${esc(x.id)}" ${x.id === b.target ? "selected" : ""}>${esc(x.title)}${x.active ? "" : "（已下架）"}</option>`).join("")
+    : cats.map(c => `<option ${c === b.target ? "selected" : ""}>${esc(c)}</option>`).join("");
+  el.innerHTML = `<h3>首頁橫幅</h3>
+    <p class="hint">賣場最上面的輪播圖，最多 ${BANNER_MAX} 張，建議用 2:1 的橫圖（例如 1200×600）。圖上不要放售價。沒有橫幅時賣場不會顯示這一塊。</p>
+    <div class="blist">${B.map((b, i) => `<div class="bitem">
+      <img src="${esc(b.image)}" alt="" referrerpolicy="no-referrer">
+      <div class="grow">
+        <div class="row2"><select data-bt="${i}" aria-label="點了連到">${[["", "點了不跳"], ["product", "連到商品"], ["category", "連到分類"]].map(([v, t]) => `<option value="${v}" ${v === (b.type || "") ? "selected" : ""}>${t}</option>`).join("")}</select>
+          ${b.type ? `<select data-bg="${i}" aria-label="連到哪裡">${opts(b)}</select>` : ""}</div>
+        <input data-bn="${i}" value="${esc(b.title || "")}" maxlength="40" placeholder="說明文字（給看不到圖的人，可不填）"></div>
+      <div class="bbtns"><button type="button" class="btn small ghost" data-bm="${i}" data-d="-1" ${i ? "" : "disabled"} aria-label="往前">↑</button><button type="button" class="btn small ghost" data-bm="${i}" data-d="1" ${i < B.length - 1 ? "" : "disabled"} aria-label="往後">↓</button><button type="button" class="btn small ghost" data-bx="${i}" style="color:#b3261e">刪除</button></div></div>`).join("") || `<p class="hint">目前沒有橫幅。</p>`}</div>
+    ${B.length < BANNER_MAX ? `<div class="field"><label for="b-img">新增橫幅圖片</label><input id="b-img" type="file" accept="image/*" multiple><span class="hint" id="bhint"></span></div>` : ""}
+    <div class="actions"><button type="button" class="btn" id="bsave">儲存橫幅</button></div>`;
+  el.querySelectorAll("[data-bt]").forEach(s => s.onchange = () => {
+    const b = B[+s.dataset.bt]; b.type = s.value;
+    b.target = b.type === "product" ? (P[0] || {}).id || "" : b.type === "category" ? cats[0] || "" : "";
+    renderBanners();
+  });
+  el.querySelectorAll("[data-bg]").forEach(s => s.onchange = () => { B[+s.dataset.bg].target = s.value; });
+  el.querySelectorAll("[data-bn]").forEach(s => s.oninput = () => { B[+s.dataset.bn].title = s.value; });
+  el.querySelectorAll("[data-bm]").forEach(b => b.onclick = () => {
+    const i = +b.dataset.bm, j = i + +b.dataset.d;
+    [B[i], B[j]] = [B[j], B[i]]; renderBanners();
+  });
+  el.querySelectorAll("[data-bx]").forEach(b => b.onclick = () => { if (confirm("移除這張橫幅？按「儲存橫幅」後才會生效。")) { B.splice(+b.dataset.bx, 1); renderBanners(); } });
+  const fi = $("#b-img");
+  if (fi) fi.onchange = () => {
+    const files = [...fi.files].slice(0, BANNER_MAX - B.length);
+    fi.disabled = true;
+    files.reduce((chain, f, i) => chain.then(() => {
+      $("#bhint").textContent = `圖片上傳中…（${i + 1}/${files.length}）`;
+      return resize(f).then(url => call("uploadImage", { dataUrl: url, filename: f.name })).then(u => { B.push({ image: u, type: "", target: "", title: "" }); });
+    }), Promise.resolve()).then(() => { renderBanners(); toast("圖片已加入，記得按「儲存橫幅」"); })
+      .catch(err => { $("#bhint").textContent = errMsg(err); fi.disabled = false; });
+  };
+  $("#bsave").onclick = () => {
+    $("#bsave").disabled = true;
+    call("saveBanners", { banners: B }).then(list => { A.data.banners = list; A.banners = list.map(b => Object.assign({}, b)); renderBanners(); toast("橫幅已儲存，賣場重新整理就會看到"); })
+      .catch(err => { toast(errMsg(err)); $("#bsave").disabled = false; });
+  };
 }
 
 render(); if (A.token) refresh();

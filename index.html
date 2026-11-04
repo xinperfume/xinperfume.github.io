@@ -21,7 +21,7 @@
 <link rel="preconnect" href="https://script.googleusercontent.com">
 <link rel="preconnect" href="https://wsrv.nl">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 <script src="config.js"></script>
 <script src="common.js?v=2"></script>
 </head>
@@ -36,6 +36,7 @@
 </header>
 <main class="wrap">
   <section id="view-shop">
+    <div id="banner" class="banner" hidden></div>
     <div id="notice" class="notice" hidden></div>
     <div id="addfriend" class="notice friendbar" hidden><span>加入官方帳號好友，付款確認和出貨時會用 LINE 通知你</span><a class="btn small" id="af-go" href="https://line.me/R/ti/p/@xinperfume">加好友</a><button type="button" class="af-x" id="af-x" aria-label="先不要">×</button></div>
     <div id="shopinfo" class="card-box shopinfo" hidden></div>
@@ -209,7 +210,7 @@ function load() {
 }
 
 function showShop(d, fromCache) {
-  S.products = d.products.map(normProduct); S.settings = d.settings;
+  S.products = d.products.map(normProduct); S.settings = d.settings; S.promo = d.promo || null;
   const name = S.settings["店名"] || "XIN歆星香水/流行代購";
   document.title = name; $("#shopname").textContent = name;
   const n = $("#notice"); n.hidden = !S.settings["公告"]; n.textContent = S.settings["公告"] || "";
@@ -220,10 +221,45 @@ function showShop(d, fromCache) {
   if (S.cat && S.categories.indexOf(S.cat) < 0) S.cat = "";
   // 舊快取可能少了新商品，購物車只用後端最新資料來清
   if (!fromCache) { S.cart = S.cart.filter(c => S.products.some(p => p.id === c.pid)); saveCart(); }
-  renderCats(); renderShop();
+  renderCats(); renderShop(); renderBanner(d.banners || []);
   // 網址帶 ?p=商品ID 時，直接打開那件商品
   const pid = new URLSearchParams(location.search).get("p");
   if (pid && !S.opened) { S.opened = true; if (S.products.some(p => p.id === pid)) openProduct(pid); }
+}
+
+// 首頁橫幅：後台「首頁橫幅」設定的圖片，自動輪播、可左右滑，點了打開商品或切到分類；沒設定就不顯示
+let bannerKey = "", bannerTimer = 0;
+function renderBanner(list) {
+  const el = $("#banner");
+  list = list.filter(b => b && b.image);
+  const key = JSON.stringify(list);
+  if (key === bannerKey) return;
+  bannerKey = key; clearInterval(bannerTimer);
+  el.hidden = !list.length;
+  if (!list.length) { el.innerHTML = ""; return; }
+  // 不用 lazy：LINE 內建瀏覽器在橫向捲動區常常不載入後面的照片
+  el.innerHTML = `<div class="bslides" id="bslides">${list.map((b, i) => `<button type="button" class="bslide" data-bi="${i}"><img src="${esc(b.image)}" alt="${esc(b.title || "活動橫幅")}" referrerpolicy="no-referrer"${i ? "" : ` fetchpriority="high"`}></button>`).join("")}</div>
+    ${list.length > 1 ? `<div class="bdots">${list.map((b, i) => `<span class="${i ? "" : "on"}"></span>`).join("")}</div>` : ""}`;
+  const sl = $("#bslides"), n = list.length;
+  const cur = () => Math.round(sl.scrollLeft / sl.clientWidth);
+  sl.addEventListener("scroll", () => { const i = cur(); el.querySelectorAll(".bdots span").forEach((d, j) => d.className = i === j ? "on" : ""); }, { passive: true });
+  el.querySelectorAll(".bslide").forEach(b => b.addEventListener("click", () => {
+    const t = list[+b.dataset.bi];
+    if (t.type === "product" && S.products.some(p => p.id === t.target)) openProduct(t.target);
+    else if (t.type === "category" && S.categories.indexOf(t.target) >= 0) {
+      S.cat = t.target; renderCats(); renderShop();
+      $(".tools").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }));
+  if (n < 2) return;
+  // 手指碰到或滑過就先停，放開 6 秒後再繼續轉
+  let pauseUntil = 0;
+  const hold = () => { pauseUntil = Date.now() + 6000; };
+  ["touchstart", "pointerdown", "wheel"].forEach(ev => sl.addEventListener(ev, hold, { passive: true }));
+  bannerTimer = setInterval(() => {
+    if (Date.now() < pauseUntil || document.hidden || !$("#view-shop").offsetParent) return;
+    sl.scrollTo({ left: (cur() + 1) % n * sl.clientWidth, behavior: "smooth" });
+  }, 4500);
 }
 
 function priceText(p) {
@@ -416,11 +452,14 @@ function openCheckout(editing) {
   // 運費和折扣只是先算給買家看，實際金額以後端算的為準
   const curPick = () => $("#f-pick") ? val("#f-pick") : m.pickup;
   const drawSum = () => {
-    const c = calcCharges(total, curPick(), S.coupon);
+    const c = calcCharges(total, curPick(), S.coupon), pr = calcPromo(total);
     $("#sum").innerHTML = `<div class="total sub"><span>小計</span><span>$${money(total)}</span></div>
       <div class="total sub"><span>運費${c.feeNote ? `<small>（${esc(c.feeNote)}）</small>` : ""}</span><span>${c.fee ? "$" + money(c.fee) : "免運"}</span></div>
       ${c.discount ? `<div class="total sub"><span>優惠碼 ${esc(S.coupon.code)}</span><span>−$${money(c.discount)}</span></div>` : ""}
-      <div class="total"><span>合計</span><span class="price">${money(total + c.fee - c.discount)}</span></div>`;
+      ${pr.discount ? `<div class="total sub promo"><span>${esc(pr.name)}</span><span>−$${money(pr.discount)}</span></div>` : ""}
+      ${pr.gift ? `<div class="total sub promo"><span>滿額贈 ${esc(pr.gift)}</span><span>×1</span></div>` : ""}
+      ${pr.hint ? `<p class="hint promo-hint">${esc(pr.hint)}</p>` : ""}
+      <div class="total"><span>合計</span><span class="price">${money(total + c.fee - c.discount - pr.discount)}</span></div>`;
   };
   $("#cpbtn").onclick = () => {
     const code = val("#f-coupon"), msg = $("#cpmsg");
@@ -469,6 +508,18 @@ function calcCharges(subtotal, pickup, coupon) {
     else { fee = fee0; feeNote = `再買 $${money(free - subtotal)} 免運`; }
   } else feeNote = "面交免運";
   return { fee, discount, feeNote };
+}
+
+// 和後端 滿額活動.gs 一樣：商品小計滿額打折、再滿額送贈品；活動結束後端就不會帶 promo
+function calcPromo(subtotal) {
+  const p = S.promo, r = { discount: 0, gift: "", hint: "", name: "" };
+  if (!p || new Date() > new Date(p.end + "T23:59:59+08:00")) return r;
+  r.name = p.name;
+  if (subtotal >= p.min) r.discount = Math.round(subtotal * (1 - p.rate));
+  if (subtotal >= p.giftMin) r.gift = p.gift;
+  r.hint = subtotal < p.min ? `再買 $${money(p.min - subtotal)} 就享${p.name}`
+    : subtotal < p.giftMin ? `再買 $${money(p.giftMin - subtotal)} 送 ${p.gift}` : "";
+  return r;
 }
 
 /* ---------- 付款 ---------- */
