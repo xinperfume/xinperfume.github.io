@@ -319,7 +319,7 @@ function renderShop() {
   $("#plist").innerHTML = `<div class="grid">${list.map(p => `<button class="card" data-pid="${esc(p.id)}"><div class="ph">${photo(p, true)}</div><div class="info">
       <div class="name">${esc(p.title)}</div><div class="price${priceText(p) === "價格待確認" ? " tbd" : ""}">${priceText(p)}</div>
       <div class="meta">${stockTag(p)}${closeShort(p)}</div>
-      ${p.sold ? `<div class="sold">已售 ${p.sold}</div>` : ""}</div></button>`).join("")}</div>`;
+      </div></button>`).join("")}</div>`;
   document.querySelectorAll(".card").forEach(c => c.addEventListener("click", () => openProduct(c.dataset.pid)));
 }
 
@@ -346,7 +346,7 @@ function openProduct(pid) {
     return v.stockLeft <= LOW_STOCK ? `只剩 ${v.stockLeft} 件` : "";
   };
   openSheet(`${gallery(p)}
-    <div class="tags">${p.category ? `<span class="chip">#${esc(p.category)}</span>` : ""}${p.preorder ? `<span class="chip pre">#允許預購</span>` : ""}${p.sold ? `<span class="chip off">已售 ${p.sold}</span>` : ""}</div>
+    <div class="tags">${p.category ? `<span class="chip">#${esc(p.category)}</span>` : ""}${p.preorder ? `<span class="chip pre">#允許預購</span>` : ""}</div>
     <h2>${esc(p.title)}</h2><div class="price${priceText(p) === "價格待確認" ? " tbd" : ""}">${priceText(p)}</div>
     ${closeLeft(p) >= 0 ? `<div class="countdown${closeLeft(p) < 864e5 ? " soon" : ""}" id="cd">⏰ ${closeLong(p)}</div>` : ""}
     <div class="label">選擇規格與數量</div>

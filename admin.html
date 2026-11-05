@@ -123,11 +123,11 @@ function renderOrders() {
     <div class="panel"><h3>叫貨總表</h3>${pickText ? `<pre class="copybox">${esc(pickText)}</pre><div class="actions"><button class="btn small ghost" id="cppick">複製叫貨總表</button></div>` : `<p class="hint">有訂單後會自動加總每個規格要叫幾件（不含已取消）。</p>`}</div>
     <div class="panel"><div class="actions" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">訂單</h3>
       <div class="actions"><select id="flt" aria-label="篩選狀態" style="width:auto">${["全部"].concat(d.statuses).map(f => `<option ${f === A.filter ? "selected" : ""}>${f}</option>`).join("")}</select><button class="btn small ghost" id="reload">重新整理</button></div></div>
-      ${rows.length ? `<div class="tablewrap"><table><thead><tr><th>編號</th><th>時間</th><th>收件人</th><th>LINE</th><th>手機</th><th>商品</th><th>金額</th><th>取貨</th><th>末五碼</th><th>狀態</th></tr></thead><tbody>
+      ${rows.length ? `<div class="tablewrap"><table><thead><tr><th>編號</th><th>時間</th><th>收件人</th><th>LINE</th><th>手機</th><th>商品</th><th>金額</th><th>取貨</th><th>末五碼</th><th>狀態</th><th></th></tr></thead><tbody>
       ${rows.map(o => `<tr><td>${esc(o.orderNo)}</td><td>${esc(o.time)}</td><td>${esc(o.name)}</td><td>${esc(o.line)}${o.lineId ? ` <span class="chip">LINE 登入</span>` : ""}</td><td>${esc(o.phone)}</td>
         <td class="wrap">${o.items.map(i => `${esc(i.title)}・${esc(i.variant)} × ${i.qty}`).join("<br>")}${o.note ? `<div class="hint">備註：${esc(o.note)}</div>` : ""}</td>
         <td>NT$${money(o.total)}</td><td>${esc(o.pickup)}</td><td>${o.last5 ? `<b>${esc(o.last5)}</b>` : "—"}</td>
-        <td><select data-no="${esc(o.orderNo)}" aria-label="訂單狀態" style="width:auto">${d.statuses.map(s => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select></td></tr>`).join("")}
+        <td><select data-no="${esc(o.orderNo)}" aria-label="訂單狀態" style="width:auto">${d.statuses.map(s => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select></td><td><button type="button" class="btn small ghost" data-odel="${esc(o.orderNo)}" style="color:#b3261e">刪除</button></td></tr>`).join("")}
       </tbody></table></div>` : `<p class="hint">${d.orders.length ? "這個狀態沒有訂單。" : "還沒有人下單。把買家網址貼到你的 LINE 社群或 FB 社團吧。"}</p>`}</div>`;
   const cp = $("#cppick"); if (cp) cp.onclick = () => copyText(pickText, "已複製，可以直接貼給廠商");
   $("#flt").onchange = e => { A.filter = e.target.value; renderOrders(); };
@@ -138,6 +138,16 @@ function renderOrders() {
       A.data.orders.filter(x => x.orderNo === s.dataset.no).forEach(o => o.status = s.value);
       toast("已改成「" + s.value + "」"); renderOrders();
     }).catch(err => { toast(errMsg(err)); s.disabled = false; });
+  }));
+  // 刪除是整筆從試算表移除、救不回來，所以一定先問一次
+  document.querySelectorAll("[data-odel]").forEach(b => b.addEventListener("click", () => {
+    const no = b.dataset.odel, o = A.data.orders.find(x => x.orderNo === no);
+    if (!confirm(`確定要刪除訂單 ${no}${o && o.name ? `（${o.name}）` : ""} 嗎？\n\n刪除後救不回來，適合測試單或重複下單。\n客人只是不買了，請把狀態改成「已取消」，紀錄才留得住。`)) return;
+    b.disabled = true;
+    call("deleteOrder", { orderNo: no }).then(() => {
+      A.data.orders = A.data.orders.filter(x => x.orderNo !== no);
+      toast("已刪除訂單 " + no); renderOrders();
+    }).catch(err => { toast(errMsg(err)); b.disabled = false; });
   }));
 }
 
