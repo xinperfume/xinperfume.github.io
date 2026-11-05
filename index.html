@@ -214,7 +214,7 @@ function showShop(d, fromCache) {
   const name = S.settings["店名"] || "XIN歆星香水/流行代購";
   document.title = name; $("#shopname").textContent = name;
   const n = $("#notice"); n.hidden = !S.settings["公告"]; n.textContent = S.settings["公告"] || "";
-  const pills = (S.settings["帳號"] ? ["可匯款"] : []).concat(pickups());
+  const pills = (S.settings["帳號"] ? ["可匯款"] : []).concat(["LINE Pay"], pickups());
   const info = $("#shopinfo"); info.hidden = !pills.length;
   info.innerHTML = `<div class="pills">${pills.map(p => `<span class="pill">${esc(p)}</span>`).join("")}</div>`;
   S.categories = d.categories || [];
@@ -523,14 +523,24 @@ function calcPromo(subtotal) {
 }
 
 /* ---------- 付款 ---------- */
+// LINE Pay 個人收款碼（手機點按鈕直接開 LINE Pay，電腦用 LINE 掃 QR code）
+const LINEPAY_URL = "https://qrcodepay.line.me/qr/payment/qjjh7kLOCWT6ztmGV417NdC%252Fm29%252BmoDVAC0OkS7TakWiG8FgGdNNq4%252FyEf1nAFfO";
+function linePayBlock(orderNo, total) {
+  return `<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px;text-align:center">
+    <div class="hint" style="margin-bottom:8px">也可以用 LINE Pay 付款</div>
+    <a class="btn" href="${LINEPAY_URL}" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none;background:#06c755;border-color:#06c755;color:#fff">開啟 LINE Pay 付款</a>
+    <div><img src="linepay_qr.png" alt="LINE Pay 收款 QR code" width="150" height="150" style="margin:10px auto 4px;display:block;image-rendering:pixelated"></div>
+    <p class="hint">用電腦看的話，拿手機 LINE 掃上面的 QR code。<br>付款時請輸入應付金額 <b>$${money(total)}</b>，留言填訂單編號 <b>${esc(orderNo)}</b></p></div>`;
+}
 function payBlock(orderNo, total) {
   const s = S.settings;
   return `<div class="paybox"><div class="hint">應付金額</div><div class="due">$${money(total)}</div>
     ${s["帳號"] ? `<dl class="acct"><dt>銀行</dt><dd>${esc(s["銀行"])}</dd><dt>帳號</dt><dd>${esc(s["帳號"])} <button type="button" class="btn small ghost" data-copy="${esc(String(s["帳號"]).replace(/[\s-]/g, ""))}">複製</button></dd>${s["戶名"] ? `<dt>戶名</dt><dd>${esc(s["戶名"])}</dd>` : ""}</dl>${s["付款說明"] ? `<p class="hint">${esc(s["付款說明"])}</p>` : ""}`
       : `<p class="hint">賣家還沒公布匯款帳號，請留意社群公告。</p>`}
+    ${linePayBlock(orderNo, total)}
     <form class="report" data-order="${esc(orderNo)}">
-      <div class="field"><label>匯款後填你的帳號末五碼</label><input inputmode="numeric" maxlength="5" placeholder="例：12345" required></div>
-      <button class="btn">回報已匯款</button></form><div class="err"></div></div>`;
+      <div class="field"><label>付款後回報末五碼</label><div class="hint" style="margin:-2px 0 6px">匯款填帳號末五碼；LINE Pay 填交易序號末五碼</div><input inputmode="numeric" maxlength="5" placeholder="例：12345" required></div>
+      <button class="btn">回報已付款</button></form><div class="err"></div></div>`;
 }
 function bindPay(root, onDone) {
   root.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => copyText(b.dataset.copy, "已複製帳號")));
