@@ -107,22 +107,23 @@ function renderTraffic() {
 }
 
 function renderOrders() {
-  const d = A.data, live = d.orders.filter(o => o.status !== "已取消");
+  // 「已完成」是出貨處理完的單：不算進統計和叫貨，訂單列表預設也不顯示（篩選選「已完成」才看得到）
+  const d = A.data, live = d.orders.filter(o => o.status !== "已取消" && o.status !== "已完成");
   const sum = st => live.filter(o => o.status === st).reduce((a, o) => a + o.total, 0);
   const pick = {};
   // 運費、優惠碼、滿額折扣那幾列不是商品，不算進叫貨（滿額贈品有規格「贈品」，要算進叫貨）
   const isCharge = i => !i.variant && /^(運費|優惠碼|滿額折扣)/.test(i.title);
   live.forEach(o => o.items.filter(i => !isCharge(i)).forEach(i => { pick[i.title] = pick[i.title] || {}; pick[i.title][i.variant] = (pick[i.title][i.variant] || 0) + i.qty; }));
   const pickText = Object.keys(pick).map(t => `【${t}】\n` + Object.keys(pick[t]).map(v => `  ${v} × ${pick[t][v]}`).join("\n")).join("\n");
-  const rows = d.orders.filter(o => A.filter === "全部" || o.status === A.filter);
+  const rows = d.orders.filter(o => A.filter === "全部" ? o.status !== "已完成" : o.status === A.filter);
   $("#view-orders").innerHTML = `<div class="summary">
       <div class="stat"><b>${live.length}</b><span>筆訂單</span></div>
       <div class="stat"><b>NT$${money(live.reduce((a, o) => a + o.total, 0))}</b><span>訂單總額</span></div>
       <div class="stat"><b>NT$${money(sum("待對帳"))}</b><span>已回報、待對帳</span></div>
       <div class="stat"><b>NT$${money(sum("待付款"))}</b><span>尚未付款</span></div></div>
-    <div class="panel"><h3>叫貨總表</h3>${pickText ? `<pre class="copybox">${esc(pickText)}</pre><div class="actions"><button class="btn small ghost" id="cppick">複製叫貨總表</button></div>` : `<p class="hint">有訂單後會自動加總每個規格要叫幾件（不含已取消）。</p>`}</div>
+    <div class="panel"><h3>叫貨總表</h3>${pickText ? `<pre class="copybox">${esc(pickText)}</pre><div class="actions"><button class="btn small ghost" id="cppick">複製叫貨總表</button></div>` : `<p class="hint">有訂單後會自動加總每個規格要叫幾件（不含已取消、已完成）。</p>`}</div>
     <div class="panel"><div class="actions" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">訂單</h3>
-      <div class="actions"><select id="flt" aria-label="篩選狀態" style="width:auto">${["全部"].concat(d.statuses).map(f => `<option ${f === A.filter ? "selected" : ""}>${f}</option>`).join("")}</select><button class="btn small ghost" id="reload">重新整理</button></div></div>
+      <div class="actions"><select id="flt" aria-label="篩選狀態" style="width:auto">${["全部"].concat(d.statuses).map(f => `<option value="${f}" ${f === A.filter ? "selected" : ""}>${f === "全部" ? "全部（不含已完成）" : f}</option>`).join("")}</select><button class="btn small ghost" id="reload">重新整理</button></div></div>
       ${rows.length ? `<div class="tablewrap"><table><thead><tr><th>編號</th><th>時間</th><th>收件人</th><th>LINE</th><th>手機</th><th>商品</th><th>金額</th><th>取貨</th><th>末五碼</th><th>狀態</th><th></th></tr></thead><tbody>
       ${rows.map(o => `<tr><td>${esc(o.orderNo)}</td><td>${esc(o.time)}</td><td>${esc(o.name)}</td><td>${esc(o.line)}${o.lineId ? ` <span class="chip">LINE 登入</span>` : ""}</td><td>${esc(o.phone)}</td>
         <td class="wrap">${o.items.map(i => `${esc(i.title)}・${esc(i.variant)} × ${i.qty}`).join("<br>")}${o.note ? `<div class="hint">備註：${esc(o.note)}</div>` : ""}</td>
